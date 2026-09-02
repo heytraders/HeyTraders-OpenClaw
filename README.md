@@ -87,7 +87,7 @@ Confirm the installed plugin and skill:
 
 ```bash
 docker compose run --rm openclaw-cli plugins inspect heytraders --runtime --json
-docker compose run --rm openclaw-cli skills info heytraders-browser --json
+docker compose run --rm openclaw-cli skills info heytraders --json
 ```
 
 Start the managed Chromium profile and open one HeyTraders tab:
@@ -110,16 +110,22 @@ Persistent state and writable runtime caches live under the ignored `.openclaw-d
 On 2026-09-02, the packed `0.1.0` artifact was installed into OpenClaw `2026.8.2` and the loaded runtime reported:
 
 - plugin status `loaded` with only the optional `heytraders_cli` tool;
-- bundled skill `heytraders-browser` as eligible and model-visible;
+- bundled skill `heytraders` as eligible and model-visible;
 - managed Chromium ready on loopback CDP;
 - live `help`, `status`, and `describe status` responses from `https://hey-traders.com` through the installed tool;
 - zero npm audit findings in both runtime-only and full dependency scopes.
 
 The test page was the unauthenticated public landing page, so no private account data or mutation was exercised. See [docs/browser-transport-evidence.md](docs/browser-transport-evidence.md) for the proof boundary.
 
+## ClawHub publishing
+
+The canonical ClawHub skill is `heytraders`, displayed as **HeyTraders Quant Trading Skills**. The repository includes a manually triggered GitHub Actions workflow at `.github/workflows/clawhub-skill-publish.yml`. It defaults to a dry run; a real release requires an explicit workflow input and the repository's `CLAWHUB_TOKEN` secret.
+
+The workflow publishes `skills/heytraders` under the `@heytraders` publisher and records the GitHub repository, commit, ref, and source path on each ClawHub release.
+
 ## Non-goals
 
-- Replacing or deleting the existing HeyTraders public HTTP API skill.
+- Deleting the archived 1.x HTTP API releases from ClawHub version history.
 - Maintaining a second command catalog.
 - Importing host-browser credentials into the container.
 - Accepting API keys, exchange credentials, wallet secrets, cookies, tokens, or browser storage.

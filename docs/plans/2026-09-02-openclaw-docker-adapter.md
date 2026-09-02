@@ -177,7 +177,7 @@ If Task 4 passed, open an authenticated HeyTraders tab in the supported browser 
 ### Task 6: Add the thin bundled skill only after runtime proof
 
 **Files:**
-- Create: `skills/heytraders-browser/SKILL.md` only after Task 5 succeeds end-to-end
+- Create: `skills/heytraders/SKILL.md` only after Task 5 succeeds end-to-end
 - Modify: `package.json`
 - Modify: `openclaw.plugin.json`
 

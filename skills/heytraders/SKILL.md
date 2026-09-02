@@ -1,10 +1,10 @@
 ---
-name: heytraders-browser
+name: heytraders
 description: Operate HeyTraders through the live heytraders_cli browser command catalog when the user asks to inspect, navigate, configure, or manage the HeyTraders application.
 user-invocable: false
 ---
 
-# HeyTraders Browser
+# HeyTraders Quant Trading Skills
 
 Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders OpenClaw plugin. The live HeyTraders page owns the command catalog, schemas, readiness, identifiers, workflow policy, and results. Do not replace that authority with remembered commands or copied schemas.
 

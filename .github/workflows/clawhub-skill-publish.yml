@@ -1,0 +1,30 @@
+name: ClawHub Skill Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview the ClawHub release without publishing
+        required: true
+        type: boolean
+        default: true
+      changelog:
+        description: Release notes for this ClawHub version
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  publish:
+    uses: openclaw/clawhub/.github/workflows/skill-publish.yml@d40547056deee00781721daa24cbc73c497cf2ba
+    with:
+      skill_path: skills/heytraders
+      dry_run: ${{ inputs.dry_run }}
+      owner: heytraders
+      tags: latest
+      changelog: ${{ inputs.changelog }}
+      ref: develop
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}

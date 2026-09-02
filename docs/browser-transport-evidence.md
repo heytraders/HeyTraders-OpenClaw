@@ -1,6 +1,6 @@
 # Browser Transport Evidence
 
-Verified locally on 2026-09-02 using Docker Desktop on Apple Silicon.
+Verified locally on 2026-09-03 using Docker Desktop on Apple Silicon.
 
 ## Runtime identity
 
@@ -33,9 +33,9 @@ The packed artifact `heytraders-openclaw-plugin-0.1.0.tgz` contained only:
 - `openclaw.plugin.json`;
 - `package.json`;
 - `README.md`;
-- `skills/heytraders-browser/SKILL.md`.
+- `skills/heytraders/SKILL.md`.
 
-The final locally installed archive had SHA-256 `ec62c73e9d6afe3270f437c2c3110b3a30e3a5ae8fa0d0f0e88072b20380d001`.
+The final locally installed archive had SHA-256 `3388b5f7a6175f78942bd5bce444df0e19d1e1a1347df971199e306668b55f4b`.
 
 After installation with explicit capability acceptance, runtime inspection reported:
 
@@ -46,7 +46,7 @@ After installation with explicit capability acceptance, runtime inspection repor
 - installed runtime dependency `typebox@1.1.38`;
 - no HTTP routes, Gateway methods, services, MCP servers, CLI commands, hooks, or providers.
 
-Skill inspection reported `heytraders-browser` as eligible, model-visible, not user-invocable, and free of missing requirements.
+Skill inspection reported `heytraders` as eligible, model-visible, not user-invocable, and free of missing requirements.
 
 ## Browser boundary proof
 
