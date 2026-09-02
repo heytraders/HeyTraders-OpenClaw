@@ -31,10 +31,6 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub-config.json
-      NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-cache
-      NPM_CONFIG_IGNORE_SCRIPTS: "true"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -50,6 +46,8 @@ jobs:
             echo "::error::A real publish requires the CLAWHUB_TOKEN repository secret."
             exit 1
           fi
+          config_path="$RUNNER_TEMP/clawhub-config.json"
+          export CLAWHUB_CONFIG_PATH="$config_path"
           node <<'NODE'
           const fs = require("node:fs");
           fs.writeFileSync(
@@ -58,6 +56,7 @@ jobs:
             { mode: 0o600 },
           );
           NODE
+          echo "CLAWHUB_CONFIG_PATH=$config_path" >> "$GITHUB_ENV"
 
       - name: Publish skill
         env:
@@ -67,6 +66,8 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          export NPM_CONFIG_CACHE="$RUNNER_TEMP/npm-cache"
+          export NPM_CONFIG_IGNORE_SCRIPTS=true
           source_commit="$(git rev-parse HEAD)"
           args=(
             --site https://clawhub.ai
