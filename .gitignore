@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .codex/
+.openclaw-docker/
 node_modules/
 dist/
 coverage/

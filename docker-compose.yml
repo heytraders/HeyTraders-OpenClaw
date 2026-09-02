@@ -1,0 +1,92 @@
+name: heytraders-openclaw
+
+x-openclaw-environment: &openclaw-environment
+  HOME: /home/node
+  OPENCLAW_HOME: /home/node
+  OPENCLAW_STATE_DIR: /home/node/.openclaw
+  OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+  OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+  OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+  OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?Set OPENCLAW_GATEWAY_TOKEN in .env}
+  TZ: ${OPENCLAW_TZ:-Asia/Seoul}
+
+x-openclaw-runtime-volumes: &openclaw-runtime-volumes
+  - ${OPENCLAW_CONFIG_DIR:-./.openclaw-docker/state}:/home/node/.openclaw
+  - ${OPENCLAW_WORKSPACE_DIR:-./.openclaw-docker/workspace}:/home/node/.openclaw/workspace
+  - ${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-docker/auth-profile-secrets}:/home/node/.config/openclaw
+  - ${OPENCLAW_CACHE_DIR:-./.openclaw-docker/cache}:/home/node/.cache/openclaw-1000
+  - .:/workspace/HeyTraders-OpenClaw:ro
+
+services:
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.2-browser@sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de}
+    environment: *openclaw-environment
+    volumes: *openclaw-runtime-volumes
+    ports:
+      - 127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789
+      - 127.0.0.1:${OPENCLAW_BRIDGE_PORT:-18790}:18790
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: unless-stopped
+    shm_size: 1gb
+    command:
+      - node
+      - dist/index.js
+      - gateway
+      - --bind
+      - ${OPENCLAW_GATEWAY_BIND:-lan}
+      - --port
+      - "18789"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:18789/healthz').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  openclaw-cli:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.2-browser@sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de}
+    network_mode: service:openclaw-gateway
+    environment:
+      <<: *openclaw-environment
+      BROWSER: echo
+    volumes: *openclaw-runtime-volumes
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    stdin_open: true
+    tty: true
+    entrypoint:
+      - node
+      - dist/index.js
+    depends_on:
+      openclaw-gateway:
+        condition: service_healthy
+
+  plugin-dev:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.2-browser@sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de}
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      NPM_CONFIG_CACHE: /workspace/HeyTraders-OpenClaw/.openclaw-docker/npm-cache
+      NODE_ENV: development
+      TZ: ${OPENCLAW_TZ:-Asia/Seoul}
+    volumes:
+      - .:/workspace/HeyTraders-OpenClaw
+      - ./.openclaw-docker/node_modules:/workspace/HeyTraders-OpenClaw/node_modules
+    working_dir: /workspace/HeyTraders-OpenClaw
+    entrypoint:
+      - npm
+    profiles:
+      - dev

@@ -1,0 +1,40 @@
+{
+  "id": "heytraders",
+  "name": "HeyTraders",
+  "description": "Operate the live HeyTraders browser command catalog through an origin-pinned WebMCP adapter.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "browserProfile": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "description": "OpenClaw browser profile that owns the authorized HeyTraders tab."
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000,
+        "description": "Maximum time for browser discovery and one HeyTraders command."
+      }
+    },
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "skills": [
+    "./skills"
+  ],
+  "contracts": {
+    "tools": [
+      "heytraders_cli"
+    ]
+  },
+  "toolMetadata": {
+    "heytraders_cli": {
+      "optional": true
+    }
+  }
+}

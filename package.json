@@ -1,0 +1,49 @@
+{
+  "name": "@heytraders/openclaw-plugin",
+  "version": "0.1.0",
+  "description": "Origin-pinned OpenClaw tool plugin for the live HeyTraders browser command catalog.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "scripts": {
+    "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "plugin:build": "npm run build && openclaw plugins build --root . --entry ./dist/index.js",
+    "plugin:check": "npm run build && openclaw plugins build --root . --entry ./dist/index.js --check",
+    "plugin:validate": "npm run build && openclaw plugins validate --root . --entry ./dist/index.js --json",
+    "test": "vitest run --config ./vitest.config.ts",
+    "verify": "npm test && npm run plugin:check && npm run plugin:validate"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "openclaw": ">=2026.8.2 <2027"
+  },
+  "dependencies": {
+    "typebox": "1.1.38"
+  },
+  "devDependencies": {
+    "openclaw": "2026.8.2",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.8.2",
+      "minGatewayVersion": "2026.8.2"
+    },
+    "build": {
+      "openclawVersion": "2026.8.2",
+      "pluginSdkVersion": "2026.8.2"
+    }
+  }
+}
