@@ -8,6 +8,16 @@ on:
         required: true
         type: boolean
         default: true
+      version:
+        description: Optional explicit semver (use 2.0.0 for the initial migration)
+        required: false
+        type: string
+        default: ""
+      migrate_from_personal:
+        description: Move the existing @alstja98/heytraders skill to @heytraders
+        required: true
+        type: boolean
+        default: false
       changelog:
         description: Release notes for this ClawHub version
         required: false
@@ -16,17 +26,73 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
-    uses: openclaw/clawhub/.github/workflows/skill-publish.yml@d40547056deee00781721daa24cbc73c497cf2ba
-    with:
-      skill_path: skills/heytraders
-      dry_run: ${{ inputs.dry_run }}
-      owner: heytraders
-      tags: latest
-      changelog: ${{ inputs.changelog }}
-      ref: develop
-    secrets:
-      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLAWHUB_CONFIG_PATH: ${{ runner.temp }}/clawhub-config.json
+      NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-cache
+      NPM_CONFIG_IGNORE_SCRIPTS: "true"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: develop
+
+      - name: Configure ClawHub authentication
+        if: ${{ !inputs.dry_run }}
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CLAWHUB_TOKEN" ]]; then
+            echo "::error::A real publish requires the CLAWHUB_TOKEN repository secret."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          fs.writeFileSync(
+            process.env.CLAWHUB_CONFIG_PATH,
+            `${JSON.stringify({ registry: "https://clawhub.ai", token: process.env.CLAWHUB_TOKEN }, null, 2)}\n`,
+            { mode: 0o600 },
+          );
+          NODE
+
+      - name: Publish skill
+        env:
+          CHANGELOG: ${{ inputs.changelog }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          MIGRATE_FROM_PERSONAL: ${{ inputs.migrate_from_personal }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          args=(
+            --site https://clawhub.ai
+            --registry https://clawhub.ai
+            skill publish skills/heytraders
+            --slug heytraders
+            --name "HeyTraders Quant Trading Skills"
+            --owner heytraders
+            --tags latest
+            --categories integrations,automation,finance
+            --source-repo heytraders/HeyTraders-OpenClaw
+            --source-commit "$source_commit"
+            --source-ref develop
+            --source-path skills/heytraders
+            --json
+          )
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          if [[ -n "$VERSION" ]]; then
+            args+=(--version "$VERSION")
+          fi
+          if [[ "$MIGRATE_FROM_PERSONAL" == "true" ]]; then
+            args+=(--source-owner alstja98 --migrate-owner)
+          fi
+          if [[ -n "$CHANGELOG" ]]; then
+            args+=(--changelog "$CHANGELOG")
+          fi
+          npx --yes clawhub@0.23.3 "${args[@]}"
