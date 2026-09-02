@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.codex/
+node_modules/
+dist/
+coverage/
+*.log
+*.tgz
