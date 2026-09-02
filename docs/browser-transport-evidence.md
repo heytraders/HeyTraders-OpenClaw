@@ -83,4 +83,4 @@ The Gateway bearer value was read only from the container environment for this l
 - Browser page: public, unauthenticated HeyTraders landing page.
 - Mutation coverage: none; no order, strategy, exchange, wallet, or settings mutation was attempted.
 - Agent coverage: the registered tool and bundled skill were verified directly; no model-provider-backed agent turn was run because no provider credential was added.
-- Publication: no npm publish, ClawHub publish, release, or `main`-branch commit was performed.
+- Publication at verification time: no npm publish, ClawHub publish, release, or `main`-branch commit was performed. The command-based skill was subsequently published to ClawHub as `@heytraders/heytraders` v2.0.0 on 2026-09-03; npm, GitHub release, and `main` remain outside this evidence.

@@ -2,7 +2,7 @@
 
 OpenClaw integration for operating [HeyTraders](https://hey-traders.com/) through the application's live browser command catalog.
 
-> Status: the plugin and its bundled skill are implemented and verified in a local Docker runtime. They have not been published to npm, ClawHub, or a GitHub release.
+> Status: the plugin and its bundled skill are implemented and verified in a local Docker runtime. The command-based `heytraders` skill is published on ClawHub as [`@heytraders/heytraders`](https://clawhub.ai/heytraders/skills/heytraders) at v2.0.0; the plugin has not been published to npm or as a GitHub release.
 
 ## What ships here
 
@@ -121,7 +121,7 @@ The test page was the unauthenticated public landing page, so no private account
 
 The canonical ClawHub skill is `heytraders`, displayed as **HeyTraders Quant Trading Skills**. The repository includes a manually triggered GitHub Actions workflow at `.github/workflows/clawhub-skill-publish.yml`. It defaults to a dry run; a real release requires an explicit workflow input and the repository's `CLAWHUB_TOKEN` secret.
 
-The workflow publishes `skills/heytraders` under the `@heytraders` publisher and records the GitHub repository, commit, ref, and source path on each ClawHub release.
+The workflow checks out this repository, publishes `skills/heytraders` under the `@heytraders` publisher, and submits the GitHub repository, commit, ref, and source path with each release. ClawHub's server-verified web import currently accepts only public repositories directly owned by the signed-in personal GitHub account, so the organization-owned `heytraders/HeyTraders-OpenClaw` repository does not appear in that picker. The GitHub Actions workflow is therefore the release connection for this repository; ClawHub currently reports its native server-resolved import provenance as unavailable.
 
 ## Non-goals
 
