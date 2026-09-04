@@ -93,9 +93,9 @@ This path is independent of Google login, Link Agent codes, Codex OAuth, and the
 
 ### CEX and DEX credential bindings
 
-`credentialBindings` belongs to this plugin; it is not an OpenClaw standard. A binding stores a safe reference, exchange identifier, kind, optional account label, and environment-variable names. It never stores the values. CEX bindings require the fixed `apiKeyEnv` and `secretEnv` pair. DEX bindings map live venue field names to environment names so Hyperliquid and other signer-based venues retain their native credential contract.
+`credentialBindings` belongs to this plugin; it is not an OpenClaw standard. A binding stores a safe reference, exchange identifier, kind, optional account label, and environment-variable names. It never stores the values. CEX bindings require the fixed `apiKeyEnv` and `secretEnv` pair. Hyperliquid uses a dedicated `hyperliquid_agent_wallet` binding that carries an already venue-approved Agent/API-wallet private key plus the master account address through the same `wallet_credentials` normalization used by the human wallet flow. Generic `dex_extended` mappings remain available only for other DEX credential contracts.
 
-The public command catalog continues to reject credentials. The adapter intercepts only exact `exchange connect`, resolves one unambiguous binding, and sends a normalized private request after login. The page then derives the canonical Agent `user_id` from its session and calls the existing account connection boundary, which owns plan enforcement, exchange lookup, credential validation, encryption, and broker transition fencing.
+The public command catalog continues to reject credentials. The adapter intercepts only exact `exchange connect`, resolves one unambiguous binding, and sends a normalized private request after login. The page then derives the canonical Agent `user_id` from its session and calls the existing account connection boundary, which owns plan enforcement, exchange lookup, credential validation, encryption, and broker transition fencing. A storage response is not treated as venue readiness; the model must re-read credential and exchange status.
 
 ### Supported version
 
@@ -107,7 +107,7 @@ The skill currently ships only inside the plugin, so the guidance and required t
 
 ## Current proof boundary
 
-The exact packed artifact has passed unit tests, TypeScript build, official plugin build/validation, archive inspection, Docker installation, runtime inspection, skill discovery, managed-browser startup, and an authenticated live `status` call on the Agent bootstrap page. After explicit server-side logout and Gateway/browser restart, the persisted key authenticated again to the same Agent and `user_id`; no second identity row was created. Fake CEX and Hyperliquid-shaped DEX bindings pass contract tests without reaching a live venue.
+The exact packed artifact has passed unit tests, TypeScript build, official plugin build/validation, archive inspection, Docker installation, runtime inspection, skill discovery, managed-browser startup, and an authenticated live `status` call on the Agent bootstrap page. After explicit server-side logout and Gateway/browser restart, the persisted key authenticated again to the same Agent and `user_id`; no second identity row was created. Fake CEX, dedicated Hyperliquid Agent-wallet, and generic non-Hyperliquid DEX bindings pass contract tests without reaching a live venue.
 
 The following are intentionally not claimed:
 

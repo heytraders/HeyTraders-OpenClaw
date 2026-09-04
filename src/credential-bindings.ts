@@ -1,14 +1,28 @@
 import type { HeyTradersRequest } from "./request-contract.js";
 
-export type CredentialBindingConfig = {
+type CredentialBindingBase = {
   ref: string;
   exchange: string;
-  kind: "cex_api_key" | "dex_extended";
   accountName?: string;
-  apiKeyEnv?: string;
-  secretEnv?: string;
-  credentialEnv?: Record<string, string>;
 };
+
+export type CredentialBindingConfig = CredentialBindingBase & (
+  | {
+      kind: "cex_api_key";
+      apiKeyEnv: string;
+      secretEnv: string;
+    }
+  | {
+      kind: "hyperliquid_agent_wallet";
+      agentPrivateKeyEnv: string;
+      masterAddressEnv: string;
+      agentExpiresAtMsEnv?: string;
+    }
+  | {
+      kind: "dex_extended";
+      credentialEnv: Record<string, string>;
+    }
+);
 
 export type ExchangeConnectSelector = {
   exchange: string;
@@ -21,6 +35,12 @@ export type PrivateExchangeConnectRequest = {
   accountName?: string;
   credential:
     | { kind: "cex_api_key"; apiKey: string; secret: string }
+    | {
+        kind: "hyperliquid_agent_wallet";
+        agentPrivateKey: string;
+        masterAddress: string;
+        agentExpiresAtMs?: number;
+      }
     | { kind: "dex_extended"; fields: Record<string, string> };
 };
 
@@ -152,6 +172,9 @@ function normalizeBindings(value: unknown): CredentialBindingConfig[] {
       "accountName",
       "apiKeyEnv",
       "secretEnv",
+      "agentPrivateKeyEnv",
+      "masterAddressEnv",
+      "agentExpiresAtMsEnv",
       "credentialEnv",
     ]);
     const unsupported = Object.keys(rawBinding).find((key) => !allowed.has(key));
@@ -174,10 +197,15 @@ function normalizeBindings(value: unknown): CredentialBindingConfig[] {
     const accountName = normalizeAccountName(rawBinding.accountName);
 
     if (rawBinding.kind === "cex_api_key") {
-      if (rawBinding.credentialEnv !== undefined) {
+      if (
+        rawBinding.credentialEnv !== undefined
+        || rawBinding.agentPrivateKeyEnv !== undefined
+        || rawBinding.masterAddressEnv !== undefined
+        || rawBinding.agentExpiresAtMsEnv !== undefined
+      ) {
         throw new CredentialBindingError(
           "INVALID_CREDENTIAL_BINDING",
-          `CEX binding ${ref} cannot define credentialEnv.`,
+          `CEX binding ${ref} cannot define DEX credential fields.`,
         );
       }
       return {
@@ -196,11 +224,64 @@ function normalizeBindings(value: unknown): CredentialBindingConfig[] {
       };
     }
 
-    if (rawBinding.kind === "dex_extended") {
-      if (rawBinding.apiKeyEnv !== undefined || rawBinding.secretEnv !== undefined) {
+    if (rawBinding.kind === "hyperliquid_agent_wallet") {
+      if (exchange !== "hyperliquid") {
         throw new CredentialBindingError(
           "INVALID_CREDENTIAL_BINDING",
-          `DEX binding ${ref} cannot define CEX key fields.`,
+          `Hyperliquid Agent-wallet binding ${ref} must use exchange hyperliquid.`,
+        );
+      }
+      if (
+        rawBinding.apiKeyEnv !== undefined
+        || rawBinding.secretEnv !== undefined
+        || rawBinding.credentialEnv !== undefined
+      ) {
+        throw new CredentialBindingError(
+          "INVALID_CREDENTIAL_BINDING",
+          `Hyperliquid Agent-wallet binding ${ref} cannot define CEX or generic DEX fields.`,
+        );
+      }
+      return {
+        ref,
+        exchange,
+        kind: "hyperliquid_agent_wallet",
+        ...(accountName ? { accountName } : {}),
+        agentPrivateKeyEnv: normalizeEnvironmentName(
+          rawBinding.agentPrivateKeyEnv,
+          `credentialBindings[${ref}].agentPrivateKeyEnv`,
+        ),
+        masterAddressEnv: normalizeEnvironmentName(
+          rawBinding.masterAddressEnv,
+          `credentialBindings[${ref}].masterAddressEnv`,
+        ),
+        ...(rawBinding.agentExpiresAtMsEnv === undefined
+          ? {}
+          : {
+              agentExpiresAtMsEnv: normalizeEnvironmentName(
+                rawBinding.agentExpiresAtMsEnv,
+                `credentialBindings[${ref}].agentExpiresAtMsEnv`,
+              ),
+            }),
+      };
+    }
+
+    if (rawBinding.kind === "dex_extended") {
+      if (exchange === "hyperliquid") {
+        throw new CredentialBindingError(
+          "INVALID_CREDENTIAL_BINDING",
+          `Hyperliquid binding ${ref} must use kind hyperliquid_agent_wallet.`,
+        );
+      }
+      if (
+        rawBinding.apiKeyEnv !== undefined
+        || rawBinding.secretEnv !== undefined
+        || rawBinding.agentPrivateKeyEnv !== undefined
+        || rawBinding.masterAddressEnv !== undefined
+        || rawBinding.agentExpiresAtMsEnv !== undefined
+      ) {
+        throw new CredentialBindingError(
+          "INVALID_CREDENTIAL_BINDING",
+          `DEX binding ${ref} cannot define CEX or Hyperliquid Agent-wallet fields.`,
         );
       }
       return {
@@ -238,6 +319,28 @@ function readSecret(
     );
   }
   return normalized;
+}
+
+function readOptionalEpochMilliseconds(
+  environment: Record<string, string | undefined>,
+  environmentName: string | undefined,
+): number | undefined {
+  if (!environmentName) return undefined;
+  const value = readSecret(environment, environmentName);
+  if (!/^[1-9][0-9]*$/u.test(value)) {
+    throw new CredentialBindingError(
+      "CREDENTIAL_ENV_INVALID",
+      `Credential environment variable ${environmentName} must contain epoch milliseconds.`,
+    );
+  }
+  const epochMilliseconds = Number(value);
+  if (!Number.isSafeInteger(epochMilliseconds)) {
+    throw new CredentialBindingError(
+      "CREDENTIAL_ENV_INVALID",
+      `Credential environment variable ${environmentName} must contain safe epoch milliseconds.`,
+    );
+  }
+  return epochMilliseconds;
 }
 
 export function readExchangeConnectSelector(
@@ -297,6 +400,24 @@ export function resolvePrivateExchangeConnectRequest(params: {
         kind: "cex_api_key",
         apiKey: readSecret(params.environment, selected.apiKeyEnv!),
         secret: readSecret(params.environment, selected.secretEnv!),
+      },
+    };
+  }
+
+  if (selected.kind === "hyperliquid_agent_wallet") {
+    const agentExpiresAtMs = readOptionalEpochMilliseconds(
+      params.environment,
+      selected.agentExpiresAtMsEnv,
+    );
+    return {
+      operation: "connect",
+      exchange: selected.exchange,
+      ...(selected.accountName ? { accountName: selected.accountName } : {}),
+      credential: {
+        kind: "hyperliquid_agent_wallet",
+        agentPrivateKey: readSecret(params.environment, selected.agentPrivateKeyEnv),
+        masterAddress: readSecret(params.environment, selected.masterAddressEnv),
+        ...(agentExpiresAtMs === undefined ? {} : { agentExpiresAtMs }),
       },
     };
   }

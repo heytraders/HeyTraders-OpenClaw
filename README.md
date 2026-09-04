@@ -114,18 +114,18 @@ docker compose restart openclaw-gateway
       {
         "ref": "hyperliquid-main",
         "exchange": "hyperliquid",
-        "kind": "dex_extended",
-        "credentialEnv": {
-          "private_key": "HYPERLIQUID_PRIVATE_KEY",
-          "account_address": "HYPERLIQUID_ACCOUNT_ADDRESS"
-        }
+        "kind": "hyperliquid_agent_wallet",
+        "agentPrivateKeyEnv": "HYPERLIQUID_AGENT_PRIVATE_KEY",
+        "masterAddressEnv": "HYPERLIQUID_MASTER_ADDRESS"
       }
     ]
   }
 }
 ```
 
-The CEX shape is fixed to an API key and secret. The DEX shape deliberately maps venue field names to environment names so Hyperliquid direct signers, delegated API-wallet keys, vaults, and other DEX contracts do not get forced into a Binance-shaped schema. Use the current `exchange guide` output and HeyTraders credential metadata before choosing the DEX field names. A missing, ambiguous, or invalid binding fails before any account mutation.
+The CEX shape is fixed to an API key and secret. Hyperliquid has a dedicated contract matching the existing HeyTraders wallet flow: `HYPERLIQUID_AGENT_PRIVATE_KEY` is an Agent/API-wallet key that has already been approved by the Hyperliquid master account, and `HYPERLIQUID_MASTER_ADDRESS` is the account it may trade for. Never place the master wallet private key in either variable. If the approval has a known expiry, add `agentExpiresAtMsEnv: "HYPERLIQUID_AGENT_EXPIRES_AT_MS"`; HeyTraders validates and records that timestamp.
+
+`dex_extended` remains available for other DEX venues whose current HeyTraders credential metadata defines different fields. It is deliberately rejected for Hyperliquid so a generic map cannot blur the Agent key and master-account roles. A missing, ambiguous, or invalid binding fails before any account mutation.
 
 The model invokes only a safe selector:
 
@@ -133,7 +133,7 @@ The model invokes only a safe selector:
 {"command":"exchange connect","args":{"exchange":"hyperliquid","connectionRef":"hyperliquid-main"}}
 ```
 
-No secret value appears in that request. Real Binance and Hyperliquid connection verification is intentionally left for an operator-assisted checkpoint because it changes account state and exercises live venue credentials.
+No secret value appears in that request. A successful connect result means the encrypted credential was stored; the skill then checks credential and exchange status before claiming venue readiness. Real Binance and Hyperliquid connection verification is intentionally left for an operator-assisted checkpoint because it changes account state and exercises live venue credentials.
 
 Confirm the installed plugin and skill:
 

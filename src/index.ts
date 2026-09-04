@@ -7,20 +7,51 @@ import {
   formatToolError,
 } from "./browser-transport.js";
 
-const credentialBindingSchema = Type.Object(
-  {
-    ref: Type.String({ minLength: 1, maxLength: 64 }),
-    exchange: Type.String({ minLength: 1, maxLength: 64 }),
-    kind: Type.Union([Type.Literal("cex_api_key"), Type.Literal("dex_extended")]),
-    accountName: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
-    apiKeyEnv: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
-    secretEnv: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
-    credentialEnv: Type.Optional(
-      Type.Record(Type.String(), Type.String({ minLength: 1, maxLength: 128 })),
-    ),
-  },
-  { additionalProperties: false },
+const bindingRefSchema = Type.String({ minLength: 1, maxLength: 64 });
+const bindingExchangeSchema = Type.String({ minLength: 1, maxLength: 64 });
+const bindingAccountNameSchema = Type.Optional(
+  Type.String({ minLength: 1, maxLength: 80 }),
 );
+const bindingEnvironmentNameSchema = Type.String({ minLength: 1, maxLength: 128 });
+
+const credentialBindingSchema = Type.Union([
+  Type.Object(
+    {
+      ref: bindingRefSchema,
+      exchange: bindingExchangeSchema,
+      kind: Type.Literal("cex_api_key"),
+      accountName: bindingAccountNameSchema,
+      apiKeyEnv: bindingEnvironmentNameSchema,
+      secretEnv: bindingEnvironmentNameSchema,
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      ref: bindingRefSchema,
+      exchange: bindingExchangeSchema,
+      kind: Type.Literal("hyperliquid_agent_wallet"),
+      accountName: bindingAccountNameSchema,
+      agentPrivateKeyEnv: bindingEnvironmentNameSchema,
+      masterAddressEnv: bindingEnvironmentNameSchema,
+      agentExpiresAtMsEnv: Type.Optional(bindingEnvironmentNameSchema),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      ref: bindingRefSchema,
+      exchange: bindingExchangeSchema,
+      kind: Type.Literal("dex_extended"),
+      accountName: bindingAccountNameSchema,
+      credentialEnv: Type.Record(
+        Type.String(),
+        bindingEnvironmentNameSchema,
+      ),
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 const configSchema = Type.Object(
   {

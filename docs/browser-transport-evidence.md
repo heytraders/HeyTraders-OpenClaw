@@ -92,7 +92,8 @@ Agent browser session is authenticated.
 Fixture-only tests cover:
 
 - Binance-shaped CEX API key and secret transport;
-- Hyperliquid-shaped DEX extended credential fields;
+- the dedicated Hyperliquid approved Agent/API-wallet key plus master-address contract;
+- generic extended credential fields for non-Hyperliquid DEX venues;
 - missing, ambiguous, mismatched, malformed, duplicate, and oversized binding
   failures;
 - rejection of credential-bearing model arguments;
@@ -104,19 +105,21 @@ used. Live venue verification remains an operator-assisted final checkpoint.
 ## Artifact and verification
 
 The packed artifact `heytraders-openclaw-plugin-0.1.0.tgz` had SHA-256
-`564af2f4c3170c05831a9baa3f0fd77de786347920e3b62eb7a41a12ba6dee9d` and
+`1aa718c6e28ca465d18359be0b910f71fc46f6374b56e884375e5c109e7418ca` and
 contained only compiled `dist/` files, the plugin manifest, package metadata,
 README, and the `heytraders` skill.
 
 Fresh verification against the pinned Docker toolchain reported:
 
-- five test files and 61 tests passed;
+- five test files and 64 tests passed;
 - TypeScript build passed;
 - generated plugin metadata current;
 - official plugin validation returned `valid: true` with no errors;
 - runtime inspection returned plugin status `loaded`, one `heytraders_cli`
   tool, and an eligible model-visible skill;
-- backend scoped auth/docs/CEX/DEX suite: 77 tests passed;
+- the live `/agent` private schema exposed distinct CEX, Hyperliquid Agent-wallet,
+  and generic non-Hyperliquid DEX credential kinds;
+- backend scoped auth/docs/CEX/DEX suite: 98 tests passed;
 - Frontend changed JavaScript/JSX parsed and the translation JSON decoded;
 - cached offline npm audits returned zero findings for runtime-only and full
   dependency scopes. The final online advisory refresh was unavailable because

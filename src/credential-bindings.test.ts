@@ -42,7 +42,7 @@ describe("OpenClaw credential bindings", () => {
     });
   });
 
-  it("maps Hyperliquid-style DEX fields without imposing a CEX shape", () => {
+  it("maps the approved Hyperliquid Agent wallet through its dedicated contract", () => {
     const selector = readExchangeConnectSelector({
       command: "exchange connect",
       args: { exchange: "hyperliquid" },
@@ -52,30 +52,103 @@ describe("OpenClaw credential bindings", () => {
       resolvePrivateExchangeConnectRequest({
         selector: selector!,
         bindings: [{
-          ref: "main-wallet",
+          ref: "approved-agent-wallet",
           exchange: "hyperliquid",
-          kind: "dex_extended",
-          credentialEnv: {
-            private_key: "HYPERLIQUID_PRIVATE_KEY",
-            account_address: "HYPERLIQUID_ACCOUNT_ADDRESS",
-          },
+          kind: "hyperliquid_agent_wallet",
+          agentPrivateKeyEnv: "HYPERLIQUID_AGENT_PRIVATE_KEY",
+          masterAddressEnv: "HYPERLIQUID_MASTER_ADDRESS",
+          agentExpiresAtMsEnv: "HYPERLIQUID_AGENT_EXPIRES_AT_MS",
         }],
         environment: {
-          HYPERLIQUID_PRIVATE_KEY: "0xfixture-private-key",
-          HYPERLIQUID_ACCOUNT_ADDRESS: "0xfixture-account-address",
+          HYPERLIQUID_AGENT_PRIVATE_KEY: "0xfixture-agent-private-key",
+          HYPERLIQUID_MASTER_ADDRESS: "0xfixture-master-address",
+          HYPERLIQUID_AGENT_EXPIRES_AT_MS: "1798761600000",
         },
       }),
     ).toEqual({
       operation: "connect",
       exchange: "hyperliquid",
       credential: {
+        kind: "hyperliquid_agent_wallet",
+        agentPrivateKey: "0xfixture-agent-private-key",
+        masterAddress: "0xfixture-master-address",
+        agentExpiresAtMs: 1798761600000,
+      },
+    });
+  });
+
+  it("keeps generic extended-field bindings available for other DEX venues", () => {
+    expect(
+      resolvePrivateExchangeConnectRequest({
+        selector: { exchange: "extended" },
+        bindings: [{
+          ref: "extended-wallet",
+          exchange: "extended",
+          kind: "dex_extended",
+          credentialEnv: {
+            stark_private_key: "EXTENDED_STARK_PRIVATE_KEY",
+            account_address: "EXTENDED_ACCOUNT_ADDRESS",
+          },
+        }],
+        environment: {
+          EXTENDED_STARK_PRIVATE_KEY: "0xfixture-stark-private-key",
+          EXTENDED_ACCOUNT_ADDRESS: "0xfixture-account-address",
+        },
+      }),
+    ).toEqual({
+      operation: "connect",
+      exchange: "extended",
+      credential: {
         kind: "dex_extended",
         fields: {
-          private_key: "0xfixture-private-key",
+          stark_private_key: "0xfixture-stark-private-key",
           account_address: "0xfixture-account-address",
         },
       },
     });
+  });
+
+  it("rejects generic Hyperliquid field mappings", () => {
+    expect(() =>
+      resolvePrivateExchangeConnectRequest({
+        selector: { exchange: "hyperliquid" },
+        bindings: [{
+          ref: "ambiguous-wallet",
+          exchange: "hyperliquid",
+          kind: "dex_extended",
+          credentialEnv: { private_key: "HYPERLIQUID_PRIVATE_KEY" },
+        }],
+        environment: { HYPERLIQUID_PRIVATE_KEY: "must-never-appear-in-errors" },
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_CREDENTIAL_BINDING" }));
+  });
+
+  it("rejects malformed Hyperliquid Agent expiry without exposing its value", () => {
+    let caught: unknown;
+    try {
+      resolvePrivateExchangeConnectRequest({
+        selector: { exchange: "hyperliquid" },
+        bindings: [{
+          ref: "approved-agent-wallet",
+          exchange: "hyperliquid",
+          kind: "hyperliquid_agent_wallet",
+          agentPrivateKeyEnv: "HYPERLIQUID_AGENT_PRIVATE_KEY",
+          masterAddressEnv: "HYPERLIQUID_MASTER_ADDRESS",
+          agentExpiresAtMsEnv: "HYPERLIQUID_AGENT_EXPIRES_AT_MS",
+        }],
+        environment: {
+          HYPERLIQUID_AGENT_PRIVATE_KEY: "0xfixture-agent-private-key",
+          HYPERLIQUID_MASTER_ADDRESS: "0xfixture-master-address",
+          HYPERLIQUID_AGENT_EXPIRES_AT_MS: "invalid-secret-shaped-value",
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(CredentialBindingError);
+    expect((caught as Error).message).toContain("HYPERLIQUID_AGENT_EXPIRES_AT_MS");
+    expect((caught as Error).message).not.toContain("invalid-secret-shaped-value");
   });
 
   it("requires an explicit safe ref when one exchange has multiple bindings", () => {

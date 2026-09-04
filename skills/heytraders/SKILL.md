@@ -38,7 +38,7 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 4. Never ask the user to paste a credential into chat or tool arguments. If the adapter reports a missing or ambiguous binding, ask the operator to configure the named environment variable or select one reported reference outside the conversation.
 5. After success, read `exchange credential_status` for the returned account ID and then `exchange status` before claiming the venue is ready.
 
-CEX bindings use `cex_api_key` with API-key and secret environment names. DEX bindings use `dex_extended`, mapping live venue credential field names to environment names. The latter supports Hyperliquid-style private keys, account addresses, delegated API-wallet keys, and vault fields without pretending they follow a CEX schema.
+CEX bindings use `cex_api_key` with API-key and secret environment names. Hyperliquid uses `hyperliquid_agent_wallet`: its private-key variable must contain an already approved Agent/API-wallet key and its address variable must contain the master account address. Never use or request the master wallet private key. Other DEX venues may use `dex_extended` with the exact fields from their current HeyTraders credential metadata; generic DEX bindings are rejected for Hyperliquid.
 
 ## Safety and ownership
 
