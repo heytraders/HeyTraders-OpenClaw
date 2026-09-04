@@ -111,7 +111,7 @@ function assertSafeJsonValue(
     if (isCredentialBearingKey(key)) {
       throw new RequestContractError(
         "CREDENTIAL_TRANSPORT_REJECTED",
-        `Credential-bearing field rejected at ${path}; configure only environment-variable names in the trusted local adapter, never secret values in model arguments.`,
+        `Credential-bearing field rejected at ${path}; wallet and venue secrets never belong in model arguments.`,
       );
     }
     assertSafeJsonValue(nestedValue, `${path}.${key}`, depth + 1, visitedObjects, visitCount);

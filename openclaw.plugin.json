@@ -24,59 +24,6 @@
         "maxLength": 64,
         "description": "OpenClaw browser profile that owns the authorized HeyTraders tab."
       },
-      "credentialBindings": {
-        "type": "array",
-        "items": {
-          "anyOf": [
-            {
-              "type": "object",
-              "required": ["ref", "exchange", "kind", "apiKeyEnv", "secretEnv"],
-              "properties": {
-                "ref": { "type": "string", "minLength": 1, "maxLength": 64 },
-                "exchange": { "type": "string", "minLength": 1, "maxLength": 64 },
-                "kind": { "type": "string", "const": "cex_api_key" },
-                "accountName": { "type": "string", "minLength": 1, "maxLength": 80 },
-                "apiKeyEnv": { "type": "string", "minLength": 1, "maxLength": 128 },
-                "secretEnv": { "type": "string", "minLength": 1, "maxLength": 128 }
-              },
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "required": ["ref", "exchange", "kind", "agentPrivateKeyEnv", "masterAddressEnv"],
-              "properties": {
-                "ref": { "type": "string", "minLength": 1, "maxLength": 64 },
-                "exchange": { "type": "string", "minLength": 1, "maxLength": 64 },
-                "kind": { "type": "string", "const": "hyperliquid_agent_wallet" },
-                "accountName": { "type": "string", "minLength": 1, "maxLength": 80 },
-                "agentPrivateKeyEnv": { "type": "string", "minLength": 1, "maxLength": 128 },
-                "masterAddressEnv": { "type": "string", "minLength": 1, "maxLength": 128 },
-                "agentExpiresAtMsEnv": { "type": "string", "minLength": 1, "maxLength": 128 }
-              },
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "required": ["ref", "exchange", "kind", "credentialEnv"],
-              "properties": {
-                "ref": { "type": "string", "minLength": 1, "maxLength": 64 },
-                "exchange": { "type": "string", "minLength": 1, "maxLength": 64 },
-                "kind": { "type": "string", "const": "dex_extended" },
-                "accountName": { "type": "string", "minLength": 1, "maxLength": 80 },
-                "credentialEnv": {
-                  "type": "object",
-                  "patternProperties": {
-                    "^.*$": { "type": "string", "minLength": 1, "maxLength": 128 }
-                  }
-                }
-              },
-              "additionalProperties": false
-            }
-          ]
-        },
-        "maxItems": 50,
-        "description": "HeyTraders-owned mapping from safe connection refs to environment variable names. Secret values stay in the OpenClaw process environment."
-      },
       "timeoutMs": {
         "type": "integer",
         "minimum": 1000,

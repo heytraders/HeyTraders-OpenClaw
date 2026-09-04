@@ -27,7 +27,7 @@ The canonical `/agent` page registered three page-defined WebMCP tools:
 
 - `heytraders_cli`, the public command facade;
 - `heytraders_agent_auth`, the adapter-only proof-of-possession handshake;
-- `heytraders_agent_exchange`, the adapter-only credential delivery path.
+- `heytraders_agent_exchange`, the adapter-only public Wallet Vault intent path.
 
 The two adapter-only names are not declared by the OpenClaw plugin and were not
 present in its accepted model tool surface. The plugin invokes them directly
@@ -82,45 +82,56 @@ An actual OpenClaw Agent turn was then run with the configured
 one successful `heytraders_cli` status call, no reroute, and protocol version
 `3`; the prompt explicitly prohibited mutations and exchange connection.
 
-## Credential-binding proof boundary
+## Agent Wallet Vault proof boundary
 
-`exchange connect` accepts only `exchange` and an optional safe
-`connectionRef` from the model. The selected binding contains environment
-variable names, and the Gateway reads the corresponding values only after the
-Agent browser session is authenticated.
+Exact Hyperliquid `exchange connect` accepts only `exchange: "hyperliquid"`
+from the model. The plugin calls a fixed Docker-internal Vault origin; it has no
+configurable credential source, `connectionRef`, or exchange-secret environment
+binding. The model-capable Gateway does not mount the repository or load
+`.env.agent`.
 
-Fixture-only tests cover:
+Fake-only tests cover:
 
-- Binance-shaped CEX API key and secret transport;
-- the dedicated Hyperliquid approved Agent/API-wallet key plus master-address contract;
-- generic extended credential fields for non-Hyperliquid DEX venues;
-- missing, ambiguous, mismatched, malformed, duplicate, and oversized binding
-  failures;
-- rejection of credential-bearing model arguments;
-- sanitized success and error output.
+- stable encrypted mainnet treasury identity and owner-only files;
+- hard rejection of testnet before wallet creation;
+- unfunded public-address return without an approval attempt;
+- canonical browser intent matching and Ed25519 Vault proof;
+- one API-wallet approval across retry and deletion of its local encrypted copy
+  after backend confirmation;
+- stable named-agent replacement across new intents and secure deletion of
+  superseded failed-delivery ciphertext;
+- rejection of nested credential-shaped Vault/backend output;
+- absence of export, transfer, withdrawal, and order HTTP routes;
+- rejection of credential-bearing model arguments and arbitrary network fields.
 
-No real Binance key, Hyperliquid signer, wallet, account, order, or strategy was
-used. Live venue verification remains an operator-assisted final checkpoint.
+No real Hyperliquid wallet, approval, deposit, account mutation, order, or
+strategy was used. Mainnet funding and live venue verification remain an
+operator-assisted final checkpoint.
 
 ## Artifact and verification
 
 The packed artifact `heytraders-openclaw-plugin-0.1.0.tgz` had SHA-256
-`1aa718c6e28ca465d18359be0b910f71fc46f6374b56e884375e5c109e7418ca` and
+`96469f4c15791b84200ddd21771e01b05fc79887b9c89a5041c4c5c357476b41` and
 contained only compiled `dist/` files, the plugin manifest, package metadata,
 README, and the `heytraders` skill.
 
 Fresh verification against the pinned Docker toolchain reported:
 
-- five test files and 64 tests passed;
+- five plugin test files and 64 tests passed;
+- 16 Wallet Vault tests passed with fake venue/backend adapters only;
 - TypeScript build passed;
 - generated plugin metadata current;
 - official plugin validation returned `valid: true` with no errors;
 - runtime inspection returned plugin status `loaded`, one `heytraders_cli`
   tool, and an eligible model-visible skill;
-- the live `/agent` private schema exposed distinct CEX, Hyperliquid Agent-wallet,
-  and generic non-Hyperliquid DEX credential kinds;
-- backend scoped auth/docs/CEX/DEX suite: 98 tests passed;
-- Frontend changed JavaScript/JSX parsed and the translation JSON decoded;
+- the live `/agent` private schema exposed only Agent authentication and public
+  wallet-intent operations outside the normal command facade;
+- backend scoped Wallet Vault/CEX/DEX suite: 60 tests passed;
+- Frontend changed JavaScript parsed successfully;
+- the broader Frontend command-discovery validator still stops on the existing
+  `market get_crypto_open_interests` entry whose `inputSchema.type` is absent;
+  the validator had already accepted the changed Exchange catalog before
+  reaching that unrelated Market entry;
 - cached offline npm audits returned zero findings for runtime-only and full
   dependency scopes. The final online advisory refresh was unavailable because
   the npm audit endpoint returned HTTP `503`; no dependency or lockfile changed
@@ -137,6 +148,9 @@ Fresh verification against the pinned Docker toolchain reported:
   value counts.
 - Logs contain fixed error types/codes only, never request arguments, browser
   URLs, tokens, cookies, private keys, or exchange values.
+- Wallet Vault has no published host port, runs as UID/GID `10001` with a
+  read-only root filesystem, and keeps ciphertext and its root key in separate
+  named volumes.
 
 ## Publication boundary
 

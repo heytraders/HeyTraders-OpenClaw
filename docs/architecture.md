@@ -13,14 +13,27 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 - Registers and executes the live command catalog.
 - Owns command schemas, readiness, identifiers, policy, idempotency, and presentation.
 - Returns structured success, error, and user-action-required results.
-- Hosts the exact `/agent` bootstrap surface and two private WebMCP tools for proof-of-possession login and trusted exchange credential delivery.
+- Hosts the exact `/agent` bootstrap surface and two private WebMCP tools for proof-of-possession login and public Wallet Vault intent preparation/status.
 
 ### HeyTraders backend
 
 - Creates one ordinary `Users.id` and one self-owned `Agents` row for a new Agent public key.
 - Owns single-use, origin-bound challenges and hashed, revocable browser sessions.
 - Resolves the Agent browser cookie into the same canonical user principal used by accounts, billing, quota, strategies, and orders.
+- Creates single-use Agent wallet intents bound to the Agent `user_id`, Agent identity, mainnet treasury address, and Wallet Vault public key.
+- Verifies the Wallet Vault's completion signature before accepting the transient API signer.
 - Validates and encrypts venue credentials through the existing account/broker path.
+
+### Agent Wallet Vault
+
+- Runs as a separate non-root container with no host port and no model-facing tool.
+- Creates and persists one Agent-owned Hyperliquid mainnet treasury/master wallet.
+- Keeps its AES root key and encrypted records in separate named volumes.
+- Returns only public wallet state and the mainnet funding address to OpenClaw.
+- Checks funding, rotates a fresh signer in one stable named Hyperliquid API-wallet slot with the official SDK, and sends that signer directly to the HeyTraders backend against a signed one-time intent.
+- Erases the local API signer only after the backend confirms encrypted storage.
+- When a later intent replaces the named signer, securely deletes ciphertext retained by any superseded failed delivery.
+- Exposes no private-key export, transfer, withdrawal, or order operation.
 
 ### OpenClaw adapter
 
@@ -31,7 +44,7 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 - Rejects remote, extension-attached, `attachOnly`, non-loopback, wrong-origin, missing, and ambiguous targets.
 - Invokes the page-defined authentication tool before every application command.
 - Invokes the public page-defined `heytraders_cli` tool for normal commands.
-- For exact `exchange connect`, resolves a configured safe reference to Gateway environment values and invokes only the private page-defined exchange tool.
+- For exact Hyperliquid `exchange connect`, coordinates the fixed internal Wallet Vault with the private page-defined public-intent tool.
 - Preserves structured responses without inventing application policy.
 
 ### Bundled skill
@@ -39,7 +52,7 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 - Explains when and how to use the tool.
 - Uses live `help` and `describe` discovery instead of copied command contracts.
 - Requires state re-reading after mutations and genuine venue handoffs.
-- Keeps credentials out of model-visible arguments and documents safe binding references.
+- Keeps credentials out of model-visible arguments and explains the public-address funding checkpoint.
 
 ## Transport sequence
 
@@ -53,10 +66,13 @@ For every call, `src/browser-transport.ts` performs the following sequence:
 6. Validate that the selected WebSocket is the loopback `/devtools/page/<targetId>` endpoint returned for that exact target.
 7. Enable CDP page lifecycle events and read `Page.getFrameTree` to revalidate the current top-level frame origin after connecting.
 8. Invoke the private auth tool's `status`; when unauthenticated, request a challenge, validate the server's canonical bytes, sign them with the local private key, and complete the session.
-9. For normal commands, invoke public `heytraders_cli`. For exact `exchange connect`, require only `exchange` plus optional `connectionRef`, resolve the binding from environment, and invoke the private exchange tool.
-10. For every invocation, accept the named tool only when its registration `frameId` equals the canonical top-level frame, fail on navigation or detach, correlate the response, and enforce time and message-size limits.
+9. For normal commands, invoke public `heytraders_cli`.
+10. For exact Hyperliquid `exchange connect`, call the fixed internal Vault prepare operation. If the treasury is unfunded, return only its mainnet public funding address.
+11. When funded, invoke the private page tool to create a one-time intent for the authenticated Agent, pass that public intent to the Vault, and let the Vault approve and deliver the API signer directly to the backend.
+12. Read the browser-side intent status and return completion only when both Vault and HeyTraders report the same connected account.
+13. For every page invocation, accept the named tool only when its registration `frameId` equals the canonical top-level frame, fail on navigation or detach, correlate the response, and enforce time and message-size limits.
 
-There is no arbitrary JavaScript evaluation, direct bridge call, cookie or browser-storage extraction, public Agent API-key bootstrap, or shell fallback. Secret values enter only the private exchange invocation from the Gateway process environment and are not returned.
+There is no arbitrary JavaScript evaluation, direct bridge call, cookie or browser-storage extraction, environment credential binding, public Agent API-key bootstrap, or shell fallback. Wallet secret values never enter the Gateway, model request, browser tool input/output, DOM, or OpenClaw configuration.
 
 ## Required invariants
 
@@ -64,12 +80,14 @@ There is no arbitrary JavaScript evaluation, direct bridge call, cookie or brows
 2. **One command authority:** current runtime `help` and `describe` output outrank remembered or durable guidance.
 3. **Exact origin and route:** only the configured approved origin's `/agent` surface is eligible.
 4. **Stable identity:** one protected local Ed25519 key resumes one HeyTraders `user_id`; a new key creates a new user rather than guessing ownership.
-5. **No model credential transport:** public tool parameters reject credential-like fields; only safe binding references reach the model.
-6. **Private credential path:** configured environment values are resolved only after Agent authentication and delivered only to the exact top-level `/agent` private tool.
+5. **No model credential transport:** public tool parameters reject credential-like fields; Hyperliquid connect accepts only its canonical exchange selector.
+6. **Vault-only custody:** the master key remains in the isolated Vault; a temporary API signer crosses only the direct signed Vault-to-backend request and is then erased locally.
 7. **No policy duplication:** authorization, quota, credential validation/encryption, and application state remain owned by HeyTraders.
-8. **Fail closed:** missing browser capability, unsupported profile, wrong or changing top-level origin, child-frame tool collision, multiple eligible tabs, unsafe CDP, auth failure, binding ambiguity, timeout, or invalid WebMCP output returns a structured error without a legacy fallback.
-9. **Bounded input and output:** commands, nesting, value count, binding count, secret size, tab-list bodies, CDP messages, and execution time have explicit limits.
-10. **Publication follows proof and approval:** local package and runtime proof do not authorize npm, ClawHub, or GitHub release publication.
+8. **Mainnet only:** testnet and arbitrary network overrides are rejected before wallet creation, intent preparation, or venue approval.
+9. **Fail closed:** missing browser capability, unsupported profile, wrong or changing top-level origin, child-frame tool collision, multiple eligible tabs, unsafe CDP, auth failure, intent mismatch, timeout, or invalid Vault/WebMCP output returns a structured error without a legacy fallback.
+10. **Bounded input and output:** commands, nesting, value count, response bodies, tab-list bodies, CDP messages, and execution time have explicit limits.
+11. **Recoverable custody:** both the encrypted Vault data volume and its separate root-key volume require an access-controlled offline backup before the public treasury address is funded; neither is sufficient alone.
+12. **Publication follows proof and approval:** local package and runtime proof do not authorize npm, ClawHub, or GitHub release publication.
 
 ## Resolved design decisions
 
@@ -91,11 +109,13 @@ The Agent private key is generated atomically with owner-only file permissions u
 
 This path is independent of Google login, Link Agent codes, Codex OAuth, and the selected OpenClaw AI provider.
 
-### CEX and DEX credential bindings
+### Agent-owned Hyperliquid wallet
 
-`credentialBindings` belongs to this plugin; it is not an OpenClaw standard. A binding stores a safe reference, exchange identifier, kind, optional account label, and environment-variable names. It never stores the values. CEX bindings require the fixed `apiKeyEnv` and `secretEnv` pair. Hyperliquid uses a dedicated `hyperliquid_agent_wallet` binding that carries an already venue-approved Agent/API-wallet private key plus the master account address through the same `wallet_credentials` normalization used by the human wallet flow. Generic `dex_extended` mappings remain available only for other DEX credential contracts.
+The adapter intercepts only exact `exchange connect` with `exchange: "hyperliquid"`; it rejects extra selectors such as a network or credential reference. The Vault creates one persistent EVM treasury, but no venue action occurs while it is unfunded. The user transfers funds to the returned public mainnet address through a supported Hyperliquid flow and runs the same command again.
 
-The public command catalog continues to reject credentials. The adapter intercepts only exact `exchange connect`, resolves one unambiguous binding, and sends a normalized private request after login. The page then derives the canonical Agent `user_id` from its session and calls the existing account connection boundary, which owns plan enforcement, exchange lookup, credential validation, encryption, and broker transition fencing. A storage response is not treated as venue readiness; the model must re-read credential and exchange status.
+After funding, the page derives the canonical Agent `user_id` from its browser session and creates a short-lived intent containing only public identity fields. The Vault verifies those exact fields, rotates a fresh signer in one stable named Hyperliquid API-wallet slot, signs a completion message whose digest binds the signer without embedding it, and posts the signer directly to the backend. Reusing the name makes Hyperliquid replace the preceding signer instead of consuming another named-agent slot; the Vault then securely deletes any superseded failed-delivery ciphertext. The backend verifies the Vault signature and reuses the existing account connection boundary, which owns plan enforcement, exchange lookup, credential validation, encryption, rollback, and broker transition fencing. The Vault erases its temporary signer after confirmation. A storage response is not treated as venue readiness; the Agent must re-read credential and exchange status.
+
+Other CEX and DEX connections stay under the live application catalog and visible browser workflow. This plugin no longer reads exchange secrets from environment variables and does not provide a generic credential-binding path.
 
 ### Supported version
 
@@ -107,7 +127,7 @@ The skill currently ships only inside the plugin, so the guidance and required t
 
 ## Current proof boundary
 
-The exact packed artifact has passed unit tests, TypeScript build, official plugin build/validation, archive inspection, Docker installation, runtime inspection, skill discovery, managed-browser startup, and an authenticated live `status` call on the Agent bootstrap page. After explicit server-side logout and Gateway/browser restart, the persisted key authenticated again to the same Agent and `user_id`; no second identity row was created. Fake CEX, dedicated Hyperliquid Agent-wallet, and generic non-Hyperliquid DEX bindings pass contract tests without reaching a live venue.
+The current exact packed artifact passed unit tests, TypeScript build, official plugin build/validation, archive inspection, Docker installation, runtime inspection, skill discovery, managed-browser startup, and an authenticated live `status` call on the Agent bootstrap page. After explicit server-side logout and Gateway/browser restart, the persisted key authenticated again to the same Agent and `user_id`; no second identity row was created. The new Wallet Vault path is verified with fake venue/backend adapters only until the operator-assisted mainnet checkpoint.
 
 The following are intentionally not claimed:
 

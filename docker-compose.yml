@@ -11,25 +11,58 @@ x-openclaw-environment: &openclaw-environment
   OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?Set OPENCLAW_GATEWAY_TOKEN in .env}
   TZ: ${OPENCLAW_TZ:-Asia/Seoul}
 
-x-openclaw-runtime-volumes: &openclaw-runtime-volumes
+x-openclaw-cli-volumes: &openclaw-cli-volumes
   - ${OPENCLAW_CONFIG_DIR:-./.openclaw-docker/state}:/home/node/.openclaw
   - ${OPENCLAW_WORKSPACE_DIR:-./.openclaw-docker/workspace}:/home/node/.openclaw/workspace
   - ${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-docker/auth-profile-secrets}:/home/node/.config/openclaw
   - ${OPENCLAW_CACHE_DIR:-./.openclaw-docker/cache}:/home/node/.cache/openclaw-1000
-  - .:/workspace/HeyTraders-OpenClaw:ro
+  - ./heytraders-openclaw-plugin-0.1.0.tgz:/workspace/HeyTraders-OpenClaw/heytraders-openclaw-plugin-0.1.0.tgz:ro
 
 services:
+  agent-wallet-vault:
+    build:
+      context: ../HeyTraders
+      dockerfile: agent-wallet-vault/Dockerfile
+    image: heytraders-agent-wallet-vault:local
+    environment:
+      HEYTRADERS_API_BASE_URL: ${HEYTRADERS_WALLET_VAULT_API_BASE_URL:-http://host.docker.internal:8000/v1}
+      WALLET_VAULT_DATA_DIR: /data
+      WALLET_VAULT_ROOT_KEY_PATH: /keys/root.key
+      WALLET_VAULT_REQUEST_TIMEOUT_SECONDS: ${HEYTRADERS_WALLET_VAULT_TIMEOUT_SECONDS:-30}
+    volumes:
+      - agent-wallet-vault-data:/data
+      - agent-wallet-vault-key:/keys
+    networks:
+      - wallet-vault
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    pids_limit: 128
+    init: true
+    restart: unless-stopped
+
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.2-browser@sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de}
-    env_file:
-      - ${HEYTRADERS_AGENT_ENV_FILE:-./.env.agent}
     environment:
       <<: *openclaw-environment
       HEYTRADERS_LOCAL_APP_PROXY: ${HEYTRADERS_LOCAL_APP_PROXY:-true}
       HEYTRADERS_LOCAL_APP_UPSTREAM_HOST: ${HEYTRADERS_LOCAL_APP_UPSTREAM_HOST:-host.docker.internal}
       HEYTRADERS_LOCAL_APP_UPSTREAM_PORT: ${HEYTRADERS_LOCAL_APP_UPSTREAM_PORT:-5174}
       HEYTRADERS_LOCAL_APP_PORT: ${HEYTRADERS_LOCAL_APP_PORT:-5174}
-    volumes: *openclaw-runtime-volumes
+    volumes:
+      - ${OPENCLAW_CONFIG_DIR:-./.openclaw-docker/state}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_DIR:-./.openclaw-docker/workspace}:/home/node/.openclaw/workspace
+      - ${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-docker/auth-profile-secrets}:/home/node/.config/openclaw
+      - ${OPENCLAW_CACHE_DIR:-./.openclaw-docker/cache}:/home/node/.cache/openclaw-1000
+      - ./scripts/docker-gateway.mjs:/workspace/HeyTraders-OpenClaw/scripts/docker-gateway.mjs:ro
+    networks:
+      - wallet-vault
     ports:
       - 127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789
       - 127.0.0.1:${OPENCLAW_BRIDGE_PORT:-18790}:18790
@@ -62,6 +95,9 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+    depends_on:
+      agent-wallet-vault:
+        condition: service_healthy
 
   openclaw-cli:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.2-browser@sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de}
@@ -69,7 +105,7 @@ services:
     environment:
       <<: *openclaw-environment
       BROWSER: echo
-    volumes: *openclaw-runtime-volumes
+    volumes: *openclaw-cli-volumes
     cap_drop:
       - NET_RAW
       - NET_ADMIN
@@ -101,3 +137,10 @@ services:
       - npm
     profiles:
       - dev
+
+volumes:
+  agent-wallet-vault-data:
+  agent-wallet-vault-key:
+
+networks:
+  wallet-vault:
