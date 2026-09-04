@@ -26,6 +26,13 @@ The live Frontend catalog is the only exchange-command owner. The OpenClaw skill
   definition as orphans. Those exact containers were stopped and removed after
   verification. Their named key/data volumes were preserved; the new Compose
   definition neither starts nor depends on them.
+- A fresh read-only OpenClaw agent turn using the installed plugin and the
+  logged-in `openai/gpt-5.6-luna` profile completed `status`, `exchange list`,
+  and `exchange guide` for `hyperliquid`. The agent received guide revision
+  `sha256:e0703c18a28b8a4c671ba8c6b8caad2608de15413385ccea47766e2ca90664ee`
+  and correctly reported that wallet/account preparation happens outside
+  HeyTraders through Hyperliquid's official guidance. No connect, wallet,
+  signing, funding, or trading action was run.
 
 The previous Vault-specific runtime proof is intentionally superseded and
 removed so it cannot be mistaken for a supported installation path.
