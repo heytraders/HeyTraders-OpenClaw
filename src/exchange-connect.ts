@@ -1,19 +1,34 @@
 import type { HeyTradersRequest } from "./request-contract.js";
 import {
+  CEX_EXCHANGES,
+  WALLET_EXCHANGES,
   WalletVaultClient,
   WalletVaultError,
-  orchestrateHyperliquidWallet,
+  type CexExchange,
+  type WalletExchange,
+  orchestrateAgentWallet,
+  parseAgentWalletIntent,
 } from "./wallet-vault-client.js";
 import {
   PublicResponseSafetyError,
   assertNoSensitivePublicFields,
 } from "./public-response-safety.js";
 
-export type HyperliquidWalletAction = "existing" | "create";
+export type WalletAction = "existing" | "create";
+
+export type ExchangeConnectRequest =
+  | { exchange: WalletExchange; kind: "wallet"; walletAction: WalletAction }
+  | { exchange: CexExchange; kind: "operator_credentials" };
 
 type ExistingWalletState = {
   available: boolean;
-  state: "available" | "connected" | "unsupported" | "not_ready" | "authorization_required" | "failed";
+  state:
+    | "available"
+    | "connected"
+    | "unsupported"
+    | "not_ready"
+    | "authorization_required"
+    | "failed";
   connected: boolean;
   accountId?: string;
   reasonCode?: string;
@@ -31,33 +46,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function invalidArgs(): WalletVaultError {
   return new WalletVaultError(
     "INVALID_EXCHANGE_CONNECT_ARGS",
-    "Hyperliquid exchange connect accepts only exchange and walletAction existing/create.",
+    "Agent exchange connect accepts only a supported exchange and its documented walletAction.",
   );
 }
 
-export function parseHyperliquidConnectRequest(
+function isWalletExchange(exchange: string): exchange is WalletExchange {
+  return (WALLET_EXCHANGES as readonly string[]).includes(exchange);
+}
+
+function isCexExchange(exchange: string): exchange is CexExchange {
+  return (CEX_EXCHANGES as readonly string[]).includes(exchange);
+}
+
+export function parseExchangeConnectRequest(
   request: HeyTradersRequest,
-): { walletAction: HyperliquidWalletAction } | null {
+): ExchangeConnectRequest | null {
   if (request.command.trim().toLowerCase() !== "exchange connect") return null;
   const exchange = typeof request.args.exchange === "string"
     ? request.args.exchange.trim().toLowerCase()
     : "";
   const hasWalletAction = Object.prototype.hasOwnProperty.call(request.args, "walletAction");
-  if (exchange !== "hyperliquid") {
+  if (!isWalletExchange(exchange) && !isCexExchange(exchange)) {
     if (hasWalletAction) throw invalidArgs();
     return null;
   }
-  const keys = Object.keys(request.args);
-  if (keys.some((key) => key !== "exchange" && key !== "walletAction")) {
+  if (Object.keys(request.args).some((key) => key !== "exchange" && key !== "walletAction")) {
     throw invalidArgs();
+  }
+  if (isCexExchange(exchange)) {
+    if (hasWalletAction) throw invalidArgs();
+    return { exchange, kind: "operator_credentials" };
   }
   const walletAction = request.args.walletAction ?? "existing";
   if (walletAction !== "existing" && walletAction !== "create") throw invalidArgs();
-  return { walletAction };
+  return { exchange, kind: "wallet", walletAction };
 }
 
 function parseExistingWalletResponse(
   value: unknown,
+  expectedExchange: WalletExchange,
   expectedAction: "existing_status" | "connect_existing",
 ): ExistingWalletState {
   try {
@@ -119,7 +146,7 @@ function parseExistingWalletResponse(
     value.protocolVersion !== 2
     || value.domain !== "exchange"
     || value.action !== expectedAction
-    || data.exchange !== "hyperliquid"
+    || data.exchange !== expectedExchange
     || data.network !== "mainnet"
     || data.adapter !== EXISTING_WALLET_ADAPTER
     || typeof available !== "boolean"
@@ -147,7 +174,10 @@ function parseExistingWalletResponse(
   };
 }
 
-function creationGuidance(existing: ExistingWalletState): Record<string, unknown> {
+function creationGuidance(
+  exchange: WalletExchange,
+  existing: ExistingWalletState,
+): Record<string, unknown> {
   const stateByAdapterState = {
     unsupported: "existing_wallet_unsupported",
     not_ready: "existing_wallet_not_ready",
@@ -163,7 +193,7 @@ function creationGuidance(existing: ExistingWalletState): Record<string, unknown
     domain: "exchange",
     action: "connect",
     data: {
-      exchange: "hyperliquid",
+      exchange,
       network: "mainnet",
       connectionMethod: "existing_browser_wallet",
       state,
@@ -171,10 +201,10 @@ function creationGuidance(existing: ExistingWalletState): Record<string, unknown
       reasonCode: existing.reasonCode ?? "wallet_provider_unavailable",
       walletCreationAvailable: true,
       nextAction:
-        "This existing wallet cannot be connected through the current browser adapter. Explicitly choose create only if a new Agent-owned wallet is wanted.",
+        "This wallet cannot be connected through the current browser adapter. Choose create explicitly only when a new isolated Agent wallet is wanted.",
       nextCommand: {
         command: "exchange connect",
-        args: { exchange: "hyperliquid", walletAction: "create" },
+        args: { exchange, walletAction: "create" },
       },
     },
     presentation: {
@@ -184,21 +214,26 @@ function creationGuidance(existing: ExistingWalletState): Record<string, unknown
   };
 }
 
-function existingConnectionResult(existing: ExistingWalletState): Record<string, unknown> {
-  if (existing.state !== "connected" || !existing.accountId) return creationGuidance(existing);
+function existingConnectionResult(
+  exchange: WalletExchange,
+  existing: ExistingWalletState,
+): Record<string, unknown> {
+  if (existing.state !== "connected" || !existing.accountId) {
+    return creationGuidance(exchange, existing);
+  }
   return {
     ok: true,
     protocolVersion: 2,
     domain: "exchange",
     action: "connect",
     data: {
-      exchange: "hyperliquid",
+      exchange,
       network: "mainnet",
       connectionMethod: "existing_browser_wallet",
       state: "completed",
       connected: true,
       accountId: existing.accountId,
-      credentialStored: true,
+      stored: true,
       verificationRequired: true,
     },
     presentation: {
@@ -219,14 +254,61 @@ function withCreationMethod(result: Record<string, unknown>): Record<string, unk
   };
 }
 
-export async function orchestrateHyperliquidConnect(params: {
-  walletAction: HyperliquidWalletAction;
+export async function orchestrateExchangeConnect(params: {
+  request: ExchangeConnectRequest;
   client: WalletVaultClient;
   invokeAgentExchange: (input: Record<string, unknown>) => Promise<unknown>;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
-  if (params.walletAction === "create") {
-    return withCreationMethod(await orchestrateHyperliquidWallet({
+  if (params.request.kind === "operator_credentials") {
+    const identity = await params.client.prepareCredentialIdentity(
+      params.request.exchange,
+      params.signal,
+    );
+    const intent = parseAgentWalletIntent(
+      await params.invokeAgentExchange({
+        operation: "prepare_operator",
+        exchange: params.request.exchange,
+        network: "mainnet",
+        walletRef: identity.walletRef,
+        identityAddress: identity.identityAddress,
+        vaultPublicKey: identity.vaultPublicKey,
+      }),
+      true,
+      params.request.exchange,
+    );
+    const handoff = await params.client.prepareCredentialHandoff(
+      identity,
+      intent,
+      params.signal,
+    );
+    return {
+      ok: true,
+      protocolVersion: 2,
+      domain: "exchange",
+      action: "connect",
+      data: {
+        exchange: params.request.exchange,
+        network: "mainnet",
+        connectionMethod: "operator_handoff",
+        state: handoff.state,
+        connected: false,
+        setupUrl: handoff.setupUrl,
+        expiresAtMs: handoff.expiresAtMs,
+        nextAction:
+          "Open the loopback-only setup page on the OpenClaw host and enter a read/trade key with withdrawals disabled.",
+      },
+      presentation: {
+        canonicalCommand: "exchange connect",
+        commandId: "exchange.connect",
+      },
+    };
+  }
+
+  const exchange = params.request.exchange;
+  if (params.request.walletAction === "create") {
+    return withCreationMethod(await orchestrateAgentWallet({
+      exchange,
       client: params.client,
       invokeAgentExchange: params.invokeAgentExchange,
       ...(params.signal ? { signal: params.signal } : {}),
@@ -236,20 +318,22 @@ export async function orchestrateHyperliquidConnect(params: {
   const status = parseExistingWalletResponse(
     await params.invokeAgentExchange({
       operation: "existing_status",
-      exchange: "hyperliquid",
+      exchange,
       network: "mainnet",
     }),
+    exchange,
     "existing_status",
   );
-  if (!status.available) return creationGuidance(status);
+  if (!status.available) return creationGuidance(exchange, status);
 
   const connected = parseExistingWalletResponse(
     await params.invokeAgentExchange({
       operation: "connect_existing",
-      exchange: "hyperliquid",
+      exchange,
       network: "mainnet",
     }),
+    exchange,
     "connect_existing",
   );
-  return existingConnectionResult(connected);
+  return existingConnectionResult(exchange, connected);
 }

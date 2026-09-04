@@ -28,32 +28,40 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 ## Exchange connection
 
 1. Read `exchange guide` for the requested venue and refresh `exchange status` or `exchange connections` before connecting.
-2. For Hyperliquid, first send the canonical selector without a wallet action. This tries only a compatible existing wallet already exposed to the Agent browser:
+2. For Hyperliquid, Extended, Lighter, Polymarket Perps, or Polymarket prediction, first send the canonical selector without a wallet action. This tries only a compatible existing wallet already exposed to the Agent browser:
 
    ```json
-   {"command":"exchange connect","args":{"exchange":"hyperliquid"}}
+   {"command":"exchange connect","args":{"exchange":"<wallet-venue>"}}
    ```
 
-3. The current existing-wallet adapter supports an EIP-1193 EVM provider already injected into the exact `/agent` browser page. It does not scan OpenClaw files, environment variables, secret stores, wallet references, extensions, or arbitrary wallet formats. If that provider is compatible, the page uses the existing HeyTraders Hyperliquid browser-wallet connection flow; wallet material never enters the model-visible result.
+3. The current existing-wallet adapter supports an EIP-1193 EVM provider already injected into the exact `/agent` browser page for Hyperliquid, Extended, Lighter, and Polymarket Perps. It does not scan OpenClaw files, environment variables, secret stores, wallet references, extensions, or arbitrary wallet formats. Polymarket prediction currently has no compatible existing-wallet adapter and therefore returns explicit creation guidance. Wallet material never enters the model-visible result.
 4. If the result is `existing_wallet_unsupported`, `existing_wallet_not_ready`, `existing_wallet_authorization_required`, or `existing_wallet_connection_failed`, preserve its reason and explain that the existing wallet cannot be connected through the current adapter. Do not automatically run the suggested creation command.
 5. Only after the user explicitly chooses a new Agent-owned wallet, send:
 
    ```json
-   {"command":"exchange connect","args":{"exchange":"hyperliquid","walletAction":"create"}}
+   {"command":"exchange connect","args":{"exchange":"<wallet-venue>","walletAction":"create"}}
    ```
 
-6. The plugin and its isolated Wallet Vault support Hyperliquid mainnet only. Never add `network`, `connectionRef`, wallet material, or credentials to either request.
-7. When an explicit creation result is `awaiting_funding`, show the returned public funding address exactly as public account information. Before asking the user to fund it, remind the operator to back up both the encrypted Wallet Vault data volume and its separate root-key volume through an access-controlled offline process; never inspect or expose their contents. Tell the user that the address is the Agent-owned Hyperliquid mainnet treasury and wait for the user to fund it through a supported Hyperliquid mainnet deposit or transfer flow. Do not claim that arbitrary token or network transfers will be credited.
-8. After the user confirms funding, run the same explicit `walletAction: "create"` command again. The Vault checks the public balance, rotates a fresh signer in its stable named API-wallet slot, and sends it directly to HeyTraders; neither the model nor browser receives that private key.
-9. After a `completed` result from either path, read `exchange credential_status` for the returned account ID and then `exchange status` before claiming the venue is ready.
-10. For every other CEX or DEX, preserve the live application's `userActionRequired` or browser handoff. This plugin does not read venue credentials from environment variables.
+6. The plugin-managed path is mainnet-only. Never add `network`, `connectionRef`, wallet material, API keys, or credentials to the command request.
+7. Before any Agent-created address receives funds, remind the operator to back up both the encrypted Wallet Vault data volume and its separate root-key volume through an access-controlled offline process; never inspect or expose their contents.
+8. Hyperliquid creation is funding-first. If the result is `awaiting_funding`, show the returned public address, identify it as the Agent-owned Hyperliquid mainnet treasury, and wait for the user to fund it through a supported Hyperliquid mainnet deposit or transfer flow. After confirmation, run the same explicit creation command again. Do not claim that arbitrary token or network transfers will be credited.
+9. Extended, Lighter, and Polymarket Perps creation signs only the exact short-lived registration messages returned by HeyTraders. Polymarket prediction creation sends its isolated signer directly to the backend for official Builder/Deposit Wallet provisioning. Preserve any venue prerequisite or retry error; never substitute a generic signature or export the wallet key.
+10. Binance and Binance Futures do not accept `walletAction`. Send only the selector:
 
-The Hyperliquid treasury master key remains encrypted in the Wallet Vault. The Vault has no model-facing key export, transfer, withdrawal, or order operation. Do not attempt a testnet flow; this integration rejects it before wallet creation.
+   ```json
+   {"command":"exchange connect","args":{"exchange":"binance"}}
+   ```
+
+   Return the loopback-only setup URL and ask the human operator to open it on the OpenClaw host within its expiry. The human enters a mainnet key with read and trade permission and withdrawals disabled. Do not ask for, receive, repeat, summarize, or inspect the key or secret in chat. After the operator says the form completed, re-read status.
+11. After any `completed` result, read `exchange credential_status` for the returned account ID when available and then `exchange status` before claiming the venue is ready.
+12. For other venues, preserve the live application's `userActionRequired` or browser handoff. This plugin does not read venue credentials from environment variables.
+
+Agent-created wallet keys remain encrypted in the Wallet Vault. The Vault has no model-facing key export, transfer, withdrawal, or order operation. Do not attempt a testnet flow; this integration rejects it before wallet creation or operator handoff preparation.
 
 ## Safety and ownership
 
 - Never put login details, API keys, exchange credentials, wallet secrets, tokens, cookies, private keys, browser storage, or recovery phrases in model-visible `heytraders_cli` arguments.
-- The Wallet Vault may send a newly approved API signer only through its signed direct backend channel after automatic Agent authentication. Do not attempt to reproduce, summarize, export, or log wallet material.
+- The Wallet Vault may send a newly approved signer or operator-entered CEX credential only through its proof-bound direct backend channel after automatic Agent authentication. Do not attempt to reproduce, summarize, export, or log that material.
 - Agent login does not require Google login, a Link Agent code, Codex OAuth, or a human browser handoff. The configured AI provider is independent of the HeyTraders Agent identity.
 - Do not invent or reuse stale command names, IDs, schemas, readiness, venue metadata, or chart capabilities. Refresh them from the live catalog.
 - Do not call a HeyTraders HTTP API, shell command, page script, undocumented bridge member, or fallback transport to bypass this tool.

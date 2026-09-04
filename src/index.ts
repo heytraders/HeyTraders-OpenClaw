@@ -69,7 +69,7 @@ export default defineToolPlugin({
       name: "heytraders_cli",
       label: "HeyTraders CLI",
       description:
-        "Discover and invoke canonical HeyTraders commands through the Agent-owned browser session. The adapter creates or resumes its account automatically. Hyperliquid connect first tries a compatible existing browser wallet; unsupported wallets receive explicit creation guidance, and only walletAction create may create or resume the isolated mainnet Agent wallet.",
+        "Discover and invoke canonical HeyTraders commands through the Agent-owned browser session. The adapter creates or resumes its account automatically. Supported DEX connections are existing-wallet-first and require explicit walletAction create for isolated mainnet wallet creation. Binance credentials are accepted only by the loopback operator handoff and never by model-visible arguments.",
       parameters: requestSchema,
       optional: true,
       execute: async (params, config, context) => {

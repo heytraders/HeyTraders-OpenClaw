@@ -9,7 +9,7 @@ OpenClaw integration for operating [HeyTraders](https://hey-traders.com/) throug
 - One optional OpenClaw tool, `heytraders_cli`, with a structured `{ command, args }` request envelope.
 - One bundled, model-visible skill that teaches discovery-first command use without copying the live catalog.
 - A persistent local Ed25519 Agent identity that automatically creates or resumes one first-class HeyTraders `user_id`.
-- An existing-wallet-first Hyperliquid path plus a separate encrypted Wallet Vault that creates a persistent mainnet treasury only when explicitly requested.
+- Existing-wallet-first onboarding for compatible DEX wallets, explicit venue-scoped wallet creation through an encrypted Vault, server-side Polymarket provisioning, and a loopback-only Binance credential handoff.
 - A loopback-only Docker Compose environment pinned to the official OpenClaw `2026.8.2-browser` image digest.
 
 Command names, schemas, readiness, identifiers, and application policy remain owned by the live HeyTraders page. The adapter starts from `help`, `help <domain>`, and `describe <command>` rather than maintaining a second catalog.
@@ -27,22 +27,28 @@ OpenClaw agent
             -> private proof-of-possession login WebMCP tool
             -> public heytraders_cli WebMCP tool for normal commands
             -> private exchange WebMCP tool
-              -> try an existing injected EVM browser wallet
-                -> existing HeyTraders Hyperliquid connection path
+              -> try an existing injected EVM browser wallet for a compatible DEX
+                -> existing HeyTraders wallet connection path
               -> otherwise return creation guidance without calling the Vault
       -> only for explicit walletAction=create
         -> fixed internal Wallet Vault client
-          -> create/resume encrypted mainnet treasury
-          -> return only its public funding address until funded
+          -> create/resume an encrypted venue-scoped mainnet wallet
+          -> sign the exact backend-issued onboarding request
           -> signed Vault-to-backend credential delivery
             -> existing encrypted account credential installer
+      -> for Binance/Binance Futures
+        -> Agent-bound signed intent
+        -> loopback-only operator form on 127.0.0.1
+        -> direct Vault-to-backend key delivery
 ```
 
 The transport does not evaluate arbitrary page JavaScript, read cookies or browser storage, call a public HeyTraders Agent API, or fall back to a shell command. It opens the exact `/agent` page, proves possession of its locally persisted private key, and receives only HttpOnly browser-session cookies. The private key never leaves the OpenClaw state directory.
 
-Model-facing arguments never accept credentials. An exact Hyperliquid `exchange connect` accepts `exchange: "hyperliquid"` and the optional `walletAction` enum `existing | create`; omission means `existing`. The default path checks only for an EIP-1193 EVM wallet provider already injected into the exact Agent page. It does not inspect OpenClaw files, environment variables, secret stores, wallet references, or arbitrary wallet formats. If the provider is absent or incompatible, the result explains that limitation and proposes an explicit creation command without contacting the Vault.
+Model-facing arguments never accept credentials. `exchange connect` for Hyperliquid, Extended, Lighter, Polymarket Perps, and Polymarket accepts the optional `walletAction` enum `existing | create`; omission means `existing`. The default path checks only for a compatible EIP-1193 provider already injected into the exact Agent page. It does not inspect OpenClaw files, environment variables, secret stores, wallet references, or arbitrary wallet formats. If that source is unsupported, the result offers an explicit creation command without contacting the Vault. Polymarket prediction currently has no compatible existing-wallet adapter, so it returns the same explicit choice instead of guessing how an external wallet is stored.
 
-Only `walletAction: "create"` lets the separate Vault create or resume the Agent's mainnet treasury and return its public funding address. Once that address is funded, the browser creates a short-lived intent for the authenticated Agent `user_id`; the Vault validates the intent, rotates a fresh signer in one stable named Hyperliquid API-wallet slot, delivers that signer directly to the backend, and erases its local copy after encrypted storage succeeds. A later intent replaces the preceding named signer and securely removes stale failed-delivery ciphertext. The master key never enters the Gateway, model environment, browser DOM, or HeyTraders credential payload.
+Only `walletAction: "create"` lets the Vault create or resume a venue-scoped wallet. Extended, Lighter, and Polymarket Perps sign the exact short-lived broker registration messages issued for that wallet. Polymarket prediction sends its signer only through the direct Vault-to-backend channel, where the official SDK creates the Deposit Wallet, derives trading credentials, and applies trading approvals using server-held Builder credentials. Hyperliquid retains its funding-first treasury and stable named API-wallet flow. No private key enters the Gateway, model environment, browser DOM, command arguments, or command results.
+
+Binance and Binance Futures do not accept `walletAction`. Their command creates a ten-minute Agent-bound intent and returns a `http://127.0.0.1` setup URL. The human enters a read/trade API key there with withdrawals disabled. The form is host/origin checked, one-time-CSRF protected, and served only through a loopback Docker port; the Vault signs credential digests and posts the values directly to the existing encrypted HeyTraders account installer without writing them to its database.
 
 ## Ownership boundaries
 
@@ -51,8 +57,10 @@ Only `walletAction: "create"` lets the separate Vault create or resume the Agent
 | Command names, schemas, readiness, identifiers, and workflow policy | Live HeyTraders frontend catalogs and domain gateways |
 | Persistent Agent private key and origin-pinned WebMCP transport | This repository and the local OpenClaw state directory |
 | Agent `user_id`, sessions, plan tier, usage, and account ownership | HeyTraders backend using the existing `Users.id` boundary |
-| Existing compatible Hyperliquid wallet detection and connection | The exact Agent page and the existing HeyTraders browser-wallet connection service |
-| Hyperliquid mainnet master key and temporary approved API signer | The isolated Wallet Vault and its separate key/data volumes |
+| Compatible existing DEX wallet detection and connection | The exact Agent page and the existing HeyTraders browser-wallet connection services |
+| Agent-created mainnet wallets and direct credential delivery | The isolated Wallet Vault and its separate key/data volumes |
+| Polymarket Builder credentials and Deposit Wallet provisioning | HeyTraders API server; never OpenClaw or the Vault |
+| Binance operator input | Loopback-only Vault form; never command arguments or results |
 | One-time Agent wallet intent and Vault proof verification | HeyTraders backend, bound to the existing Agent `user_id` |
 | Venue credential schema, encrypted storage, and runtime validation | Live HeyTraders application and broker services |
 
@@ -81,7 +89,7 @@ Build the Wallet Vault, start the Gateway, and install the exact packed artifact
 
 ```bash
 docker compose build agent-wallet-vault
-docker compose up -d agent-wallet-vault openclaw-gateway
+docker compose up -d agent-wallet-vault agent-wallet-operator openclaw-gateway
 docker compose run --rm openclaw-cli plugins install \
   npm-pack:/workspace/HeyTraders-OpenClaw/heytraders-openclaw-plugin-0.1.0.tgz \
   --force --accept-capabilities
@@ -104,15 +112,15 @@ docker compose restart openclaw-gateway
 
 `browser.noSandbox=true` is required by Chromium in this non-root Docker runtime. Container isolation remains enforced with dropped network capabilities, `no-new-privileges`, no Docker socket, no host browser data, and loopback-only host ports. The model-capable Gateway mounts only its persistent OpenClaw directories and the single read-only launcher script; the operator CLI mounts only the packed plugin artifact. Neither mounts the repository or an `.env.agent` file. Only the opt-in `plugin-dev` service mounts the checkout read-write.
 
-## Hyperliquid existing-wallet-first flow
+## Exchange onboarding flows
 
-The model first invokes the canonical selector:
+For a wallet venue, the model first invokes the canonical selector, for example:
 
 ```json
 {"command":"exchange connect","args":{"exchange":"hyperliquid"}}
 ```
 
-That call uses a compatible EIP-1193 wallet already available in the Agent page when one exists. The integration does not impose a wallet storage format and does not claim to discover arbitrary wallets managed elsewhere. If no compatible provider is available, it returns public creation guidance and does not call the Wallet Vault.
+The same existing-first selector applies to `extended`, `lighter`, `polymarketperp`, and `polymarket`. It uses a compatible EIP-1193 wallet already available in the Agent page when one exists. The integration does not impose a wallet storage format and does not claim to discover arbitrary wallets managed elsewhere. If the current adapter cannot connect it, the command returns public creation guidance and does not call the Vault. The Docker-network-only Vault API and the separately published loopback operator form run as distinct services; the host port cannot reach wallet creation, signing, or intent-preparation routes.
 
 To explicitly create or resume an Agent-owned wallet, invoke:
 
@@ -120,9 +128,17 @@ To explicitly create or resume an Agent-owned wallet, invoke:
 {"command":"exchange connect","args":{"exchange":"hyperliquid","walletAction":"create"}}
 ```
 
-Only that explicit call lets the Vault create a mainnet-only treasury and return its public address with `awaiting_funding`. The user funds that address through a supported Hyperliquid mainnet deposit or transfer flow, then asks the Agent to run the same explicit command again. The next call checks funding, obtains a browser intent tied to the Agent account, rotates an API wallet in the treasury's stable named slot, stores the API signer through the existing encrypted HeyTraders account path, and returns `completed`. The Agent must then read `exchange credential_status` and `exchange status` before claiming readiness.
+Use the requested venue ID in the explicit creation call. Hyperliquid returns `awaiting_funding`; the user funds that address through a supported Hyperliquid mainnet deposit or transfer flow and reruns the command. Extended, Lighter, and Polymarket Perps use venue-specific registration signatures. Polymarket prediction uses the backend's official Builder provisioning path. Every successful path must be followed by `exchange credential_status` and `exchange status` before the Agent claims readiness.
 
-The Vault intentionally has no private-key export, transfer, withdrawal, or order endpoint. Hyperliquid is mainnet-only in this integration; `testnet` and arbitrary network overrides are rejected before wallet creation. Other CEX and DEX venues continue through the live application handoff and are not given an environment-secret shortcut by this plugin.
+For Binance or Binance Futures, run the selector without `walletAction`:
+
+```json
+{"command":"exchange connect","args":{"exchange":"binance"}}
+```
+
+Open the returned loopback URL on the same host within ten minutes, enter a read/trade key with withdrawal permission disabled, and then re-read credential and exchange status. The default operator port is `18091` and can be changed with `HEYTRADERS_OPERATOR_PORT`; Docker still binds it only to `127.0.0.1`.
+
+The Vault intentionally has no private-key export, transfer, withdrawal, or order endpoint. All plugin-managed exchange onboarding is mainnet-only; `testnet` and arbitrary network overrides are rejected before wallet creation or intent preparation. No venue receives an environment-secret shortcut.
 
 Before funding, the operator must back up both `agent-wallet-vault-data` and `agent-wallet-vault-key` through an access-controlled offline process. The database is unusable without the root-key volume, and the root key alone does not contain the wallet record; loss of either can make the Agent treasury permanently inaccessible. Never copy either volume's contents into a model prompt, chat, log, repository, or ordinary environment file.
 

@@ -5,7 +5,8 @@ import {
   WALLET_VAULT_ORIGIN,
   WalletVaultClient,
   WalletVaultError,
-  orchestrateHyperliquidWallet,
+  type AgentWalletIntent,
+  orchestrateAgentWallet,
   parseAgentWalletIntent,
   parseWalletVaultResponse,
 } from "./wallet-vault-client.js";
@@ -158,6 +159,96 @@ describe("WalletVaultClient", () => {
     });
     expect(fetchFn).not.toHaveBeenCalled();
   });
+
+  it("binds a Binance operator handoff to the Vault identity without key fields", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(response({
+        exchange: "binance",
+        network: "mainnet",
+        wallet_ref: "binance-main",
+        identity_address: FUNDING_ADDRESS,
+        vault_public_key: VAULT_PUBLIC_KEY,
+        state: "ready",
+      }))
+      .mockResolvedValueOnce(response({
+        exchange: "binance",
+        state: "awaiting_operator",
+        setup_url: "http://127.0.0.1:18091/operator-handoffs/16e3c6cb-a999-4acc-ae27-a80a730b91a8",
+        expires_at_ms: EXPIRES_AT_MS,
+      }));
+    const client = new WalletVaultClient({ fetch: fetchFn });
+    const identity = await client.prepareCredentialIdentity("binance");
+    const intent: AgentWalletIntent = {
+      intentId: INTENT_ID,
+      exchange: "binance",
+      network: "mainnet",
+      walletRef: "binance-main",
+      fundingAddress: FUNDING_ADDRESS,
+      state: "pending",
+      expiresAtMs: EXPIRES_AT_MS,
+      challenge: "signed-operator-intent",
+      completionType: "operator_credentials",
+      signingRequests: [],
+    };
+
+    const handoff = await client.prepareCredentialHandoff(identity, intent);
+
+    expect(handoff).toMatchObject({
+      exchange: "binance",
+      state: "awaiting_operator",
+      expiresAtMs: EXPIRES_AT_MS,
+    });
+    expect(fetchFn.mock.calls[0]![0]).toBe(
+      `${WALLET_VAULT_ORIGIN}/v1/operator-handoffs/identity`,
+    );
+    expect(fetchFn.mock.calls[1]![0]).toBe(
+      `${WALLET_VAULT_ORIGIN}/v1/operator-handoffs/prepare`,
+    );
+    const preparedBody = JSON.parse(String(fetchFn.mock.calls[1]![1]?.body));
+    expect(preparedBody).toMatchObject({
+      intent_id: INTENT_ID,
+      exchange: "binance",
+      completion_type: "operator_credentials",
+      signing_requests: [],
+    });
+    expect(JSON.stringify(preparedBody)).not.toMatch(/api[_-]?key|api[_-]?secret/iu);
+  });
+
+  it("rejects a non-loopback operator setup URL", async () => {
+    const client = new WalletVaultClient({
+      fetch: async () => response({
+        exchange: "binance",
+        state: "awaiting_operator",
+        setup_url: "https://example.com/operator",
+        expires_at_ms: EXPIRES_AT_MS,
+      }),
+    });
+    const identity = {
+      exchange: "binance" as const,
+      network: "mainnet" as const,
+      walletRef: "binance-main",
+      identityAddress: FUNDING_ADDRESS,
+      vaultPublicKey: VAULT_PUBLIC_KEY,
+      state: "ready" as const,
+    };
+    const intent: AgentWalletIntent = {
+      intentId: INTENT_ID,
+      exchange: "binance",
+      network: "mainnet",
+      walletRef: "binance-main",
+      fundingAddress: FUNDING_ADDRESS,
+      state: "pending",
+      expiresAtMs: EXPIRES_AT_MS,
+      challenge: "signed-operator-intent",
+      completionType: "operator_credentials",
+      signingRequests: [],
+    };
+
+    await expect(client.prepareCredentialHandoff(identity, intent)).rejects.toMatchObject({
+      code: "VAULT_RESPONSE_INVALID",
+    });
+  });
 });
 
 describe("Hyperliquid Wallet Vault orchestration", () => {
@@ -167,7 +258,11 @@ describe("Hyperliquid Wallet Vault orchestration", () => {
     });
     const invokeAgentExchange = vi.fn();
 
-    const result = await orchestrateHyperliquidWallet({ client, invokeAgentExchange });
+    const result = await orchestrateAgentWallet({
+      exchange: "hyperliquid",
+      client,
+      invokeAgentExchange,
+    });
 
     expect(result).toMatchObject({
       ok: true,
@@ -192,7 +287,11 @@ describe("Hyperliquid Wallet Vault orchestration", () => {
       .mockResolvedValueOnce(browserIntent("prepare"))
       .mockResolvedValueOnce(browserIntent("status"));
 
-    const result = await orchestrateHyperliquidWallet({ client, invokeAgentExchange });
+    const result = await orchestrateAgentWallet({
+      exchange: "hyperliquid",
+      client,
+      invokeAgentExchange,
+    });
 
     expect(result).toMatchObject({
       ok: true,

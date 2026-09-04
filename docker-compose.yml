@@ -18,34 +18,60 @@ x-openclaw-cli-volumes: &openclaw-cli-volumes
   - ${OPENCLAW_CACHE_DIR:-./.openclaw-docker/cache}:/home/node/.cache/openclaw-1000
   - ./heytraders-openclaw-plugin-0.1.0.tgz:/workspace/HeyTraders-OpenClaw/heytraders-openclaw-plugin-0.1.0.tgz:ro
 
+x-agent-wallet-vault: &agent-wallet-vault
+  build:
+    context: ../HeyTraders
+    dockerfile: agent-wallet-vault/Dockerfile
+  image: heytraders-agent-wallet-vault:local
+  environment:
+    HEYTRADERS_API_BASE_URL: ${HEYTRADERS_WALLET_VAULT_API_BASE_URL:-http://host.docker.internal:8000/v1}
+    WALLET_VAULT_DATA_DIR: /data
+    WALLET_VAULT_ROOT_KEY_PATH: /keys/root.key
+    WALLET_VAULT_REQUEST_TIMEOUT_SECONDS: ${HEYTRADERS_WALLET_VAULT_TIMEOUT_SECONDS:-30}
+    WALLET_VAULT_OPERATOR_ORIGIN: http://127.0.0.1:${HEYTRADERS_OPERATOR_PORT:-18091}
+  volumes:
+    - agent-wallet-vault-data:/data
+    - agent-wallet-vault-key:/keys
+  networks:
+    - wallet-vault
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=16m
+  pids_limit: 128
+  init: true
+  restart: unless-stopped
+
 services:
   agent-wallet-vault:
-    build:
-      context: ../HeyTraders
-      dockerfile: agent-wallet-vault/Dockerfile
-    image: heytraders-agent-wallet-vault:local
-    environment:
-      HEYTRADERS_API_BASE_URL: ${HEYTRADERS_WALLET_VAULT_API_BASE_URL:-http://host.docker.internal:8000/v1}
-      WALLET_VAULT_DATA_DIR: /data
-      WALLET_VAULT_ROOT_KEY_PATH: /keys/root.key
-      WALLET_VAULT_REQUEST_TIMEOUT_SECONDS: ${HEYTRADERS_WALLET_VAULT_TIMEOUT_SECONDS:-30}
-    volumes:
-      - agent-wallet-vault-data:/data
-      - agent-wallet-vault-key:/keys
-    networks:
-      - wallet-vault
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m
-    pids_limit: 128
-    init: true
-    restart: unless-stopped
+    <<: *agent-wallet-vault
+
+  agent-wallet-operator:
+    <<: *agent-wallet-vault
+    command:
+      - sh
+      - -c
+      - uvicorn agent_wallet_vault.main:build_operator_application --factory --host 0.0.0.0 --port 8092
+    ports:
+      - 127.0.0.1:${HEYTRADERS_OPERATOR_PORT:-18091}:8092
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/health', timeout=2).read()
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    depends_on:
+      agent-wallet-vault:
+        condition: service_healthy
 
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.2-browser@sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de}
@@ -97,6 +123,8 @@ services:
       start_period: 20s
     depends_on:
       agent-wallet-vault:
+        condition: service_healthy
+      agent-wallet-operator:
         condition: service_healthy
 
   openclaw-cli:
