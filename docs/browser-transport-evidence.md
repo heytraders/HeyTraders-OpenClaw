@@ -23,8 +23,9 @@ The live Frontend catalog is the only exchange-command owner. The OpenClaw skill
   request contract, plugin metadata, README, and one skill. It contained no
   exchange connector, signer, wallet generator, Vault client, or Vault service.
 - The existing local Compose project reported two Vault containers from the old
-  definition as orphans. The new Compose definition neither starts nor depends
-  on them; they were not deleted as part of this source-only change.
+  definition as orphans. Those exact containers were stopped and removed after
+  verification. Their named key/data volumes were preserved; the new Compose
+  definition neither starts nor depends on them.
 
 The previous Vault-specific runtime proof is intentionally superseded and
 removed so it cannot be mistaken for a supported installation path.
