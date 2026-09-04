@@ -7,13 +7,50 @@ import {
   formatToolError,
 } from "./browser-transport.js";
 
+const credentialBindingSchema = Type.Object(
+  {
+    ref: Type.String({ minLength: 1, maxLength: 64 }),
+    exchange: Type.String({ minLength: 1, maxLength: 64 }),
+    kind: Type.Union([Type.Literal("cex_api_key"), Type.Literal("dex_extended")]),
+    accountName: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+    apiKeyEnv: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+    secretEnv: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+    credentialEnv: Type.Optional(
+      Type.Record(Type.String(), Type.String({ minLength: 1, maxLength: 128 })),
+    ),
+  },
+  { additionalProperties: false },
+);
+
 const configSchema = Type.Object(
   {
+    appOrigin: Type.Optional(
+      Type.String({
+        minLength: 1,
+        maxLength: 256,
+        description:
+          "Exact HeyTraders app origin. Defaults to production; HTTP is accepted only for loopback or host.docker.internal development.",
+      }),
+    ),
+    agentDisplayName: Type.Optional(
+      Type.String({
+        minLength: 1,
+        maxLength: 80,
+        description: "Display name for the autonomous HeyTraders Agent-owned account.",
+      }),
+    ),
     browserProfile: Type.Optional(
       Type.String({
         minLength: 1,
         maxLength: 64,
         description: "OpenClaw browser profile that owns the authorized HeyTraders tab.",
+      }),
+    ),
+    credentialBindings: Type.Optional(
+      Type.Array(credentialBindingSchema, {
+        maxItems: 50,
+        description:
+          "HeyTraders-owned mapping from safe connection refs to environment variable names. Secret values stay in the OpenClaw process environment.",
       }),
     ),
     timeoutMs: Type.Optional(
@@ -54,7 +91,7 @@ export default defineToolPlugin({
       name: "heytraders_cli",
       label: "HeyTraders CLI",
       description:
-        "Discover and invoke canonical HeyTraders commands in a user-authorized https://hey-traders.com browser tab. Start with live help or describe output when the exact contract is unknown. Credentials and visible confirmations remain in the browser UI.",
+        "Discover and invoke canonical HeyTraders commands through the Agent-owned HeyTraders browser session. The adapter creates or resumes its account automatically with a persistent local Ed25519 identity. For exchange connect, pass only exchange and an optional connectionRef; configured secrets are resolved outside model arguments.",
       parameters: requestSchema,
       optional: true,
       execute: async (params, config, context) => {
@@ -63,7 +100,10 @@ export default defineToolPlugin({
             params,
             config,
             context.api.runtime.config.current(),
-            { signal: context.signal },
+            {
+              signal: context.signal,
+              stateDir: context.api.runtime.state.resolveStateDir(process.env),
+            },
           );
         } catch (error) {
           context.api.logger.error(`heytraders_cli adapter failed: ${formatErrorForLog(error)}`);

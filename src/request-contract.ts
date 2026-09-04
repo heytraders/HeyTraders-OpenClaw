@@ -111,7 +111,7 @@ function assertSafeJsonValue(
     if (isCredentialBearingKey(key)) {
       throw new RequestContractError(
         "CREDENTIAL_TRANSPORT_REJECTED",
-        `Credential-bearing field rejected at ${path}; enter credentials only in the HeyTraders UI.`,
+        `Credential-bearing field rejected at ${path}; configure only environment-variable names in the trusted local adapter, never secret values in model arguments.`,
       );
     }
     assertSafeJsonValue(nestedValue, `${path}.${key}`, depth + 1, visitedObjects, visitCount);

@@ -1,86 +1,141 @@
 # Browser Transport Evidence
 
-Verified locally on 2026-09-03 using Docker Desktop on Apple Silicon.
+Verified locally on 2026-09-04 using Docker Desktop on Apple Silicon. This
+evidence is local-only; no production deployment, package publication, or live
+exchange mutation was performed.
 
 ## Runtime identity
 
 - OpenClaw release: `2026.8.2` (`0965053` in the running CLI banner).
-- Image: `ghcr.io/openclaw/openclaw:2026.8.2-browser` pinned to digest `sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de`.
-- Platform: Linux ARM64 manifest present and pulled successfully.
-- Gateway: healthy on the container's port `18789`; host mappings are loopback-only.
-- Browser: managed profile `openclaw`, driver `openclaw`, CDP `http://127.0.0.1:18800`, headless Chromium from the official browser image.
+- Image: `ghcr.io/openclaw/openclaw:2026.8.2-browser`, pinned to digest
+  `sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de`.
+- Gateway: healthy, loopback-only host mappings on ports `18789` and `18790`.
+- Browser: managed `openclaw` profile, headless Chromium, loopback CDP at
+  `http://127.0.0.1:18800` inside the container.
+- Writable cache: `XDG_CACHE_HOME` targets the ignored host cache mount; its
+  OpenClaw SQLite staging child was verified owner-local with mode `0700`.
+- HeyTraders app: the exact Agent surface at `http://localhost:5174/agent`,
+  served through the Gateway-local development proxy.
 
-## Public OpenClaw contracts used
+## Tool boundaries
+
+Runtime plugin inspection reported one model-facing optional tool:
+
+- `heytraders_cli`
+
+The canonical `/agent` page registered three page-defined WebMCP tools:
+
+- `heytraders_cli`, the public command facade;
+- `heytraders_agent_auth`, the adapter-only proof-of-possession handshake;
+- `heytraders_agent_exchange`, the adapter-only credential delivery path.
+
+The two adapter-only names are not declared by the OpenClaw plugin and were not
+present in its accepted model tool surface. The plugin invokes them directly
+over the selected top-level page's WebMCP/CDP connection. No generic JavaScript
+evaluation, page DOM scraping, or undocumented Gateway method is used.
+Fresh page discovery also confirmed that a regular HeyTraders page registers
+only `heytraders_cli`; the two private tools exist only on `/agent`.
 
 The plugin imports only public SDK paths:
 
-- `openclaw/plugin-sdk/tool-plugin` for plugin and tool definition;
-- `openclaw/plugin-sdk/browser-config` for current browser configuration and profile resolution.
+- `openclaw/plugin-sdk/tool-plugin`;
+- `openclaw/plugin-sdk/browser-config`.
 
-The resolved managed profile supplies the local CDP origin. The adapter then uses standard CDP target discovery plus the Chromium `Page` and `WebMCP` domains. Its protocol methods are limited to:
+## Autonomous login proof
 
-- `Page.enable` and `Page.getFrameTree` to bind to the current canonical top-level frame and detect navigation;
-- `WebMCP.enable`;
-- `WebMCP.invokeTool` with tool name `heytraders_cli`, the validated `{ command, args }` input, and the exact top-level frame ID.
+The first `heytraders_cli` request opened `/agent`, generated a local Ed25519
+identity, completed the origin-bound challenge, created one first-class
+HeyTraders user, and established an opaque browser session. The private key
+remained in the ignored OpenClaw state directory with mode `0600`; only its
+public key reached HeyTraders.
 
-An attempted generic Gateway method dispatch from an ordinary tool plugin was rejected by OpenClaw's plugin contract, so that privileged route was not used or bypassed.
+After an explicit logout, Gateway/browser restart, and a second invocation,
+the adapter signed a fresh challenge with the persisted key and resumed the
+same user instead of creating another account. The local database then showed:
 
-## Artifact and runtime proof
+- one Agent-provider `Users` row;
+- one `self_owned` `Agents` row;
+- one authentication key and one distinct Agent `user_id` mapping;
+- one active session plus the deliberately revoked earlier session;
+- RLS enabled on all three private authentication tables;
+- zero `anon`, `authenticated`, or `service_role` Data API grants on them.
 
-The packed artifact `heytraders-openclaw-plugin-0.1.0.tgz` contained only:
+The legacy public registration and claim endpoints returned HTTP `404`.
 
-- compiled JavaScript and declaration files under `dist/`;
-- `openclaw.plugin.json`;
-- `package.json`;
-- `README.md`;
-- `skills/heytraders/SKILL.md`.
+## Live command proof
 
-The final locally installed archive had SHA-256 `3388b5f7a6175f78942bd5bce444df0e19d1e1a1347df971199e306668b55f4b`.
+After stale manual-test tabs were closed, the managed profile contained one
+canonical `/agent` tab. Invocation through the authenticated Gateway
+`POST /tools/invoke` endpoint returned structured success for `status`:
 
-After installation with explicit capability acceptance, runtime inspection reported:
+- protocol version `3`;
+- system, navigation, auth, docs, settings, exchange, portfolio, order,
+  execution, and market gateways ready;
+- chart gateway not ready, as expected on the minimal `/agent` surface.
 
-- plugin ID `heytraders`, version `0.1.0`, status `loaded`;
-- built-with OpenClaw version `2026.8.2`;
-- one optional tool, `heytraders_cli`;
-- one accepted skill directory, `./skills`;
-- installed runtime dependency `typebox@1.1.38`;
-- no HTTP routes, Gateway methods, services, MCP servers, CLI commands, hooks, or providers.
+The Gateway bearer was read only from the running container environment for
+the diagnostic. It was never printed, persisted in evidence, or passed to the
+HeyTraders plugin.
 
-Skill inspection reported `heytraders` as eligible, model-visible, not user-invocable, and free of missing requirements.
+An actual OpenClaw Agent turn was then run with the configured
+`openai/gpt-5.6-luna` provider at `max` reasoning. Its runtime receipt recorded
+one successful `heytraders_cli` status call, no reroute, and protocol version
+`3`; the prompt explicitly prohibited mutations and exchange connection.
 
-## Browser boundary proof
+## Credential-binding proof boundary
 
-Observed fail-closed behavior through the installed plugin:
+`exchange connect` accepts only `exchange` and an optional safe
+`connectionRef` from the model. The selected binding contains environment
+variable names, and the Gateway reads the corresponding values only after the
+Agent browser session is authenticated.
 
-- no eligible tab returned `HEYTRADERS_TAB_NOT_FOUND`;
-- two eligible exact-origin tabs returned `AMBIGUOUS_HEYTRADERS_TAB`;
-- one eligible exact-origin tab allowed invocation;
-- the live top-level frame ID matched the page target and the `heytraders_cli` registration frame ID;
-- unsupported remote, extension, attach-only, unsafe CDP, wrong/changing top-level origin, child-frame name collision, invalid request, credential-like field, timeout, close, and malformed response paths are covered by unit tests.
+Fixture-only tests cover:
 
-With exactly one `https://hey-traders.com/` tab open, direct invocation through the authenticated local Gateway tool endpoint returned HTTP 200 and structured success for:
+- Binance-shaped CEX API key and secret transport;
+- Hyperliquid-shaped DEX extended credential fields;
+- missing, ambiguous, mismatched, malformed, duplicate, and oversized binding
+  failures;
+- rejection of credential-bearing model arguments;
+- sanitized success and error output.
 
-- `help`: protocol version 3 and the live domain summary;
-- `status`: live domain readiness; all landing-page gateways except the chart gateway were ready;
-- `describe status`: the current empty input schema and query/concurrency-safe execution policy.
+No real Binance key, Hyperliquid signer, wallet, account, order, or strategy was
+used. Live venue verification remains an operator-assisted final checkpoint.
 
-The Gateway bearer value was read only from the container environment for this local diagnostic and was never printed or passed into the plugin.
+## Artifact and verification
 
-## Input and transport controls
+The packed artifact `heytraders-openclaw-plugin-0.1.0.tgz` had SHA-256
+`564af2f4c3170c05831a9baa3f0fd77de786347920e3b62eb7a41a12ba6dee9d` and
+contained only compiled `dist/` files, the plugin manifest, package metadata,
+README, and the `heytraders` skill.
 
-- Selector commands are trimmed, non-empty, control-character-free, and limited to 512 characters.
-- Arguments must be plain JSON objects with finite numbers, bounded depth, and bounded value count.
-- Prototype-polluting keys and credential-like field names are rejected before browser access.
-- CDP HTTP is restricted to credential-free `http://127.0.0.1:<port>`.
-- Page WebSockets are restricted to credential-free loopback `ws://.../devtools/page/<selected-target>` URLs.
-- CDP tab-list bodies and messages are bounded; each command has a configurable timeout and abort handling.
-- Logs include only a fixed error type and validated error code, never application error text, arguments, tokens, or tab URLs.
+Fresh verification against the pinned Docker toolchain reported:
 
-## Verification result and limits
+- five test files and 61 tests passed;
+- TypeScript build passed;
+- generated plugin metadata current;
+- official plugin validation returned `valid: true` with no errors;
+- runtime inspection returned plugin status `loaded`, one `heytraders_cli`
+  tool, and an eligible model-visible skill;
+- backend scoped auth/docs/CEX/DEX suite: 77 tests passed;
+- Frontend changed JavaScript/JSX parsed and the translation JSON decoded;
+- cached offline npm audits returned zero findings for runtime-only and full
+  dependency scopes. The final online advisory refresh was unavailable because
+  the npm audit endpoint returned HTTP `503`; no dependency or lockfile changed
+  since the prior successful audit.
 
-- Unit tests: 48 passed in the final verification pass, including explicit structured-error, user-action-handoff, missing-facade timeout, child-frame rejection, navigation, early-tab-close, token-identifier, and log-redaction coverage.
-- npm audit: zero findings for runtime-only dependencies and zero findings for the full lockfile.
-- Browser page: public, unauthenticated HeyTraders landing page.
-- Mutation coverage: none; no order, strategy, exchange, wallet, or settings mutation was attempted.
-- Agent coverage: the registered tool and bundled skill were verified directly; no model-provider-backed agent turn was run because no provider credential was added.
-- Publication at verification time: no npm publish, ClawHub publish, release, or `main`-branch commit was performed. The command-based skill was subsequently published to ClawHub as `@heytraders/heytraders` v2.0.0 on 2026-09-03; npm, GitHub release, and `main` remain outside this evidence.
+## Fail-closed controls
+
+- Exact app origin and exact `/agent` bootstrap path are required.
+- Multiple matching Agent tabs, wrong or changing top-level origin, child-frame
+  collisions, unsupported browser profiles, unsafe CDP URLs, malformed WebMCP
+  output, timeouts, and early closes fail without a legacy transport fallback.
+- Model requests are bounded plain JSON and reject credential-like fields,
+  prototype-polluting keys, non-finite numbers, excessive depth, and excessive
+  value counts.
+- Logs contain fixed error types/codes only, never request arguments, browser
+  URLs, tokens, cookies, private keys, or exchange values.
+
+## Publication boundary
+
+No npm publish, ClawHub publish, GitHub release, push, production deployment, or
+`main`-branch commit was performed as part of this verification.

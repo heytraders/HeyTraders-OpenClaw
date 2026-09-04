@@ -1,9 +1,18 @@
 import { resolveBrowserConfig, resolveProfile } from "openclaw/plugin-sdk/browser-config";
 
+import { ensureAgentBrowserSession } from "./agent-auth.js";
+import {
+  readExchangeConnectSelector,
+  resolvePrivateExchangeConnectRequest,
+  type CredentialBindingConfig,
+} from "./credential-bindings.js";
 import { normalizeHeyTradersRequest, type HeyTradersRequest } from "./request-contract.js";
 
-const HEYTRADERS_ORIGIN = "https://hey-traders.com";
+export const DEFAULT_HEYTRADERS_ORIGIN = "https://hey-traders.com";
+const AGENT_BOOTSTRAP_PATH = "/agent";
 const HEYTRADERS_TOOL_NAME = "heytraders_cli";
+const HEYTRADERS_AGENT_AUTH_TOOL_NAME = "heytraders_agent_auth";
+const HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME = "heytraders_agent_exchange";
 const MAX_CDP_MESSAGE_BYTES = 8 * 1024 * 1024;
 const PAGE_ENABLE_REQUEST_ID = 1;
 const FRAME_TREE_REQUEST_ID = 2;
@@ -21,7 +30,10 @@ export type BrowserTab = {
 };
 
 export type BrowserTransportConfig = {
+  appOrigin?: string;
+  agentDisplayName?: string;
   browserProfile?: string;
+  credentialBindings?: CredentialBindingConfig[];
   timeoutMs?: number;
 };
 
@@ -90,21 +102,59 @@ export function parseBrowserTabs(payload: unknown): BrowserTab[] {
   });
 }
 
-function isCanonicalHeyTradersTab(tab: BrowserTab): boolean {
+export function normalizeHeyTradersAppOrigin(value: string | undefined): string {
+  const candidate = String(value || DEFAULT_HEYTRADERS_ORIGIN).trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new BrowserTransportError("INVALID_APP_ORIGIN", "HeyTraders appOrigin is invalid.");
+  }
+  if (
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new BrowserTransportError(
+      "INVALID_APP_ORIGIN",
+      "HeyTraders appOrigin must be an exact origin without credentials, path, query, or fragment.",
+    );
+  }
+  const production = parsed.origin === DEFAULT_HEYTRADERS_ORIGIN;
+  const localDevelopment =
+    parsed.protocol === "http:" &&
+    ["127.0.0.1", "localhost", "[::1]", "host.docker.internal"].includes(parsed.hostname) &&
+    Boolean(parsed.port);
+  if (!production && !localDevelopment) {
+    throw new BrowserTransportError(
+      "UNAPPROVED_APP_ORIGIN",
+      "HeyTraders appOrigin must be the production app or an explicit local development origin.",
+    );
+  }
+  return parsed.origin;
+}
+
+function isExpectedHeyTradersTab(tab: BrowserTab, expectedOrigin: string): boolean {
   if (tab.type !== undefined && tab.type !== "page") return false;
   try {
-    return new URL(tab.url).origin === HEYTRADERS_ORIGIN;
+    return new URL(tab.url).origin === expectedOrigin;
   } catch {
     return false;
   }
 }
 
-export function selectHeyTradersTab(tabs: BrowserTab[]): BrowserTab {
-  const eligibleTabs = tabs.filter(isCanonicalHeyTradersTab);
+export function selectHeyTradersTab(
+  tabs: BrowserTab[],
+  expectedOrigin = DEFAULT_HEYTRADERS_ORIGIN,
+): BrowserTab {
+  const normalizedOrigin = normalizeHeyTradersAppOrigin(expectedOrigin);
+  const eligibleTabs = tabs.filter((tab) => isExpectedHeyTradersTab(tab, normalizedOrigin));
   if (eligibleTabs.length === 0) {
     throw new BrowserTransportError(
       "HEYTRADERS_TAB_NOT_FOUND",
-      "No eligible https://hey-traders.com tab is open in the configured OpenClaw browser profile.",
+      `No eligible ${normalizedOrigin} tab is open in the configured OpenClaw browser profile.`,
       true,
     );
   }
@@ -190,7 +240,7 @@ type CdpResponse = {
   params?: Record<string, unknown>;
 };
 
-function readCanonicalMainFrame(result: unknown): { id: string; url: string } {
+function readMainFrame(result: unknown): { id: string; url: string } {
   if (!isRecord(result) || !isRecord(result.frameTree) || !isRecord(result.frameTree.frame)) {
     throw new BrowserTransportError(
       "INVALID_CDP_FRAME_TREE",
@@ -212,24 +262,29 @@ function readCanonicalMainFrame(result: unknown): { id: string; url: string } {
     );
   }
 
+  return { id: frame.id, url: frame.url };
+}
+
+function hasExpectedOrigin(url: string, expectedOrigin: string): boolean {
   try {
-    if (new URL(frame.url).origin !== HEYTRADERS_ORIGIN) {
-      throw new BrowserTransportError(
-        "HEYTRADERS_ORIGIN_CHANGED",
-        "The selected tab navigated away from the canonical HeyTraders origin.",
-        true,
-      );
-    }
-  } catch (error) {
-    if (error instanceof BrowserTransportError) throw error;
+    return new URL(url).origin === expectedOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function isTransitionalMainFrameUrl(url: string): boolean {
+  return url === "" || url === "about:blank";
+}
+
+function assertExpectedMainFrameOrigin(url: string, expectedOrigin: string): void {
+  if (!hasExpectedOrigin(url, expectedOrigin)) {
     throw new BrowserTransportError(
       "HEYTRADERS_ORIGIN_CHANGED",
-      "The selected tab no longer has a valid HeyTraders origin.",
+      "The selected tab navigated away from the canonical HeyTraders origin.",
       true,
     );
   }
-
-  return { id: frame.id, url: frame.url };
 }
 
 export type WebMcpToolResponse = {
@@ -267,10 +322,15 @@ function readToolResponse(params: Record<string, unknown>): WebMcpToolResponse {
   };
 }
 
-export function invokeHeyTradersWebMcpTool(params: {
+export function invokeWebMcpTool(params: {
   wsUrl: string;
   targetId: string;
-  input: HeyTradersRequest;
+  expectedOrigin: string;
+  toolName:
+    | typeof HEYTRADERS_TOOL_NAME
+    | typeof HEYTRADERS_AGENT_AUTH_TOOL_NAME
+    | typeof HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME;
+  input: unknown;
   timeoutMs: number;
   signal?: AbortSignal;
   createWebSocket?: WebSocketFactory;
@@ -283,6 +343,8 @@ export function invokeHeyTradersWebMcpTool(params: {
     let invocationRequested = false;
     let invocationId: string | undefined;
     let mainFrameId: string | undefined;
+    let awaitingExpectedMainFrame = false;
+    let webMcpEnableRequested = false;
     const pendingResponses = new Map<string, Record<string, unknown>>();
     let socket: WebSocketLike;
 
@@ -313,6 +375,13 @@ export function invokeHeyTradersWebMcpTool(params: {
       } catch (error) {
         fail(error);
       }
+    };
+    const enableWebMcp = (): void => {
+      if (webMcpEnableRequested) return;
+      webMcpEnableRequested = true;
+      socket.send(
+        JSON.stringify({ id: WEBMCP_ENABLE_REQUEST_ID, method: "WebMCP.enable" }),
+      );
     };
     const abortHandler = (): void =>
       fail(new BrowserTransportError("WEBMCP_ABORTED", "HeyTraders command was canceled.", true));
@@ -383,16 +452,36 @@ export function invokeHeyTradersWebMcpTool(params: {
         }
 
         if (message.id === FRAME_TREE_REQUEST_ID) {
-          mainFrameId = readCanonicalMainFrame(message.result).id;
-          socket.send(
-            JSON.stringify({ id: WEBMCP_ENABLE_REQUEST_ID, method: "WebMCP.enable" }),
-          );
+          const frame = readMainFrame(message.result);
+          mainFrameId = frame.id;
+          if (hasExpectedOrigin(frame.url, params.expectedOrigin)) {
+            enableWebMcp();
+          } else if (isTransitionalMainFrameUrl(frame.url)) {
+            awaitingExpectedMainFrame = true;
+          } else {
+            assertExpectedMainFrameOrigin(frame.url, params.expectedOrigin);
+          }
           return;
         }
 
         if (message.method === "Page.frameNavigated" && isRecord(message.params?.frame)) {
           const frame = message.params.frame;
           const isTopLevelFrame = typeof frame.parentId !== "string";
+          if (
+            awaitingExpectedMainFrame &&
+            isTopLevelFrame &&
+            typeof frame.id === "string" &&
+            typeof frame.url === "string"
+          ) {
+            mainFrameId = frame.id;
+            if (hasExpectedOrigin(frame.url, params.expectedOrigin)) {
+              awaitingExpectedMainFrame = false;
+              enableWebMcp();
+            } else if (!isTransitionalMainFrameUrl(frame.url)) {
+              assertExpectedMainFrameOrigin(frame.url, params.expectedOrigin);
+            }
+            return;
+          }
           if (mainFrameId && (frame.id === mainFrameId || isTopLevelFrame)) {
             throw new BrowserTransportError(
               "HEYTRADERS_TAB_NAVIGATED",
@@ -421,7 +510,7 @@ export function invokeHeyTradersWebMcpTool(params: {
           const tool = tools.find(
             (candidate) =>
               isRecord(candidate) &&
-              candidate.name === HEYTRADERS_TOOL_NAME &&
+              candidate.name === params.toolName &&
               candidate.frameId === mainFrameId,
           );
           if (!isRecord(tool) || typeof tool.frameId !== "string") return;
@@ -432,7 +521,7 @@ export function invokeHeyTradersWebMcpTool(params: {
               method: "WebMCP.invokeTool",
               params: {
                 frameId: tool.frameId,
-                toolName: HEYTRADERS_TOOL_NAME,
+                toolName: params.toolName,
                 input: params.input,
               },
             }),
@@ -467,6 +556,22 @@ export function invokeHeyTradersWebMcpTool(params: {
         fail(error);
       }
     });
+  });
+}
+
+export function invokeHeyTradersWebMcpTool(params: {
+  wsUrl: string;
+  targetId: string;
+  input: HeyTradersRequest;
+  timeoutMs: number;
+  expectedOrigin?: string;
+  signal?: AbortSignal;
+  createWebSocket?: WebSocketFactory;
+}): Promise<WebMcpToolResponse> {
+  return invokeWebMcpTool({
+    ...params,
+    expectedOrigin: normalizeHeyTradersAppOrigin(params.expectedOrigin),
+    toolName: HEYTRADERS_TOOL_NAME,
   });
 }
 
@@ -565,31 +670,127 @@ async function readBrowserTabs(
   }
 }
 
-export async function executeHeyTradersCommand(
-  request: unknown,
-  config: BrowserTransportConfig,
-  runtimeConfig: unknown,
-  options: {
-    signal?: AbortSignal;
-    fetch?: FetchLike;
-    createWebSocket?: WebSocketFactory;
-  } = {},
-): Promise<unknown> {
-  const normalizedRequest = normalizeHeyTradersRequest(request);
-  const browserProfile = config.browserProfile?.trim() || "openclaw";
-  const timeoutMs = Math.min(Math.max(config.timeoutMs ?? 30_000, 1_000), 120_000);
-  const cdpHttpUrl = resolveManagedBrowserCdpUrl(runtimeConfig, browserProfile);
-  const tabs = await readBrowserTabs(cdpHttpUrl, timeoutMs, options.signal, options.fetch ?? fetch);
-  const tab = selectHeyTradersTab(tabs);
-  const response = await invokeHeyTradersWebMcpTool({
-    wsUrl: tab.wsUrl,
-    targetId: tab.targetId,
-    input: normalizedRequest,
-    timeoutMs,
-    ...(options.signal ? { signal: options.signal } : {}),
-    ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
-  });
+function isAgentBootstrapTab(tab: BrowserTab, expectedOrigin: string): boolean {
+  if (!isExpectedHeyTradersTab(tab, expectedOrigin)) return false;
+  try {
+    const parsed = new URL(tab.url);
+    return parsed.pathname.replace(/\/$/u, "") === AGENT_BOOTSTRAP_PATH;
+  } catch {
+    return false;
+  }
+}
 
+function selectAgentBootstrapTab(
+  tabs: BrowserTab[],
+  expectedOrigin: string,
+): BrowserTab | undefined {
+  const eligible = tabs.filter((tab) => isAgentBootstrapTab(tab, expectedOrigin));
+  if (eligible.length <= 1) return eligible[0];
+  throw new BrowserTransportError(
+    "AMBIGUOUS_AGENT_BOOTSTRAP_TAB",
+    "Multiple HeyTraders Agent bootstrap tabs are open; keep exactly one /agent tab open.",
+    true,
+  );
+}
+
+async function createAgentBootstrapTab(
+  cdpHttpUrl: string,
+  expectedOrigin: string,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+  fetchFn: FetchLike,
+): Promise<BrowserTab> {
+  const controller = new AbortController();
+  const abortHandler = (): void => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abortHandler, { once: true });
+  const timeoutHandle = setTimeout(() => controller.abort("timeout"), timeoutMs);
+  const targetUrl = `${expectedOrigin}${AGENT_BOOTSTRAP_PATH}`;
+  try {
+    const response = await fetchFn(
+      `${assertSafeCdpHttpUrl(cdpHttpUrl)}/json/new?${encodeURIComponent(targetUrl)}`,
+      {
+        method: "PUT",
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok) {
+      throw new BrowserTransportError(
+        "BROWSER_TAB_CREATE_FAILED",
+        `OpenClaw browser CDP returned HTTP ${response.status} while opening HeyTraders.`,
+        true,
+      );
+    }
+    const body = await response.text();
+    if (new TextEncoder().encode(body).byteLength > 1024 * 1024) {
+      throw new BrowserTransportError(
+        "INVALID_BROWSER_RESPONSE",
+        "OpenClaw browser tab response exceeded 1 MiB.",
+      );
+    }
+    const [tab] = parseBrowserTabs({ tabs: [JSON.parse(body) as unknown] });
+    if (!tab || !isAgentBootstrapTab(tab, expectedOrigin)) {
+      throw new BrowserTransportError(
+        "BROWSER_TAB_CREATE_FAILED",
+        "OpenClaw did not open the exact HeyTraders Agent bootstrap URL.",
+        true,
+      );
+    }
+    return tab;
+  } catch (error) {
+    if (error instanceof BrowserTransportError) throw error;
+    if (signal?.aborted) {
+      throw new BrowserTransportError("WEBMCP_ABORTED", "HeyTraders command was canceled.", true);
+    }
+    throw new BrowserTransportError(
+      controller.signal.aborted ? "BROWSER_CDP_TIMEOUT" : "BROWSER_TAB_CREATE_FAILED",
+      controller.signal.aborted
+        ? "Opening the HeyTraders Agent bootstrap tab timed out."
+        : "OpenClaw could not open the HeyTraders Agent bootstrap tab.",
+      true,
+    );
+  } finally {
+    clearTimeout(timeoutHandle);
+    signal?.removeEventListener("abort", abortHandler);
+  }
+}
+
+async function ensureAgentBootstrapTab(
+  cdpHttpUrl: string,
+  expectedOrigin: string,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+  fetchFn: FetchLike,
+): Promise<BrowserTab> {
+  const tabs = await readBrowserTabs(cdpHttpUrl, timeoutMs, signal, fetchFn);
+  return (
+    selectAgentBootstrapTab(tabs, expectedOrigin) ??
+    createAgentBootstrapTab(cdpHttpUrl, expectedOrigin, timeoutMs, signal, fetchFn)
+  );
+}
+
+async function invokeCompletedTool(params: {
+  tab: BrowserTab;
+  expectedOrigin: string;
+  toolName:
+    | typeof HEYTRADERS_TOOL_NAME
+    | typeof HEYTRADERS_AGENT_AUTH_TOOL_NAME
+    | typeof HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME;
+  input: unknown;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  createWebSocket?: WebSocketFactory;
+}): Promise<unknown> {
+  const response = await invokeWebMcpTool({
+    wsUrl: params.tab.wsUrl,
+    targetId: params.tab.targetId,
+    expectedOrigin: params.expectedOrigin,
+    toolName: params.toolName,
+    input: params.input,
+    timeoutMs: params.timeoutMs,
+    ...(params.signal ? { signal: params.signal } : {}),
+    ...(params.createWebSocket ? { createWebSocket: params.createWebSocket } : {}),
+  });
   if (response.status !== "Completed") {
     throw new BrowserTransportError(
       `WEBMCP_${response.status.toUpperCase()}`,
@@ -598,6 +799,87 @@ export async function executeHeyTradersCommand(
     );
   }
   return decodeHeyTradersOutput(response.output);
+}
+
+export async function executeHeyTradersCommand(
+  request: unknown,
+  config: BrowserTransportConfig,
+  runtimeConfig: unknown,
+  options: {
+    signal?: AbortSignal;
+    fetch?: FetchLike;
+    createWebSocket?: WebSocketFactory;
+    environment?: Record<string, string | undefined>;
+    stateDir?: string;
+  } = {},
+): Promise<unknown> {
+  const normalizedRequest = normalizeHeyTradersRequest(request);
+  const browserProfile = config.browserProfile?.trim() || "openclaw";
+  const timeoutMs = Math.min(Math.max(config.timeoutMs ?? 30_000, 1_000), 120_000);
+  const expectedOrigin = normalizeHeyTradersAppOrigin(config.appOrigin);
+  const displayName = String(config.agentDisplayName || "OpenClaw Agent").trim();
+  if (!displayName || displayName.length > 80) {
+    throw new BrowserTransportError(
+      "INVALID_AGENT_DISPLAY_NAME",
+      "HeyTraders agentDisplayName must contain 1 to 80 characters.",
+    );
+  }
+  if (!options.stateDir) {
+    throw new BrowserTransportError(
+      "AGENT_IDENTITY_STORAGE_UNAVAILABLE",
+      "OpenClaw state storage is unavailable for the HeyTraders Agent identity.",
+    );
+  }
+  const cdpHttpUrl = resolveManagedBrowserCdpUrl(runtimeConfig, browserProfile);
+  const fetchFn = options.fetch ?? fetch;
+  const tab = await ensureAgentBootstrapTab(
+    cdpHttpUrl,
+    expectedOrigin,
+    timeoutMs,
+    options.signal,
+    fetchFn,
+  );
+  await ensureAgentBrowserSession({
+    appOrigin: expectedOrigin,
+    displayName,
+    stateDir: options.stateDir,
+    invoke: (input) =>
+      invokeCompletedTool({
+        tab,
+        expectedOrigin,
+        toolName: HEYTRADERS_AGENT_AUTH_TOOL_NAME,
+        input,
+        timeoutMs,
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
+      }),
+  });
+  const exchangeConnectSelector = readExchangeConnectSelector(normalizedRequest);
+  if (exchangeConnectSelector) {
+    const privateConnectRequest = resolvePrivateExchangeConnectRequest({
+      selector: exchangeConnectSelector,
+      bindings: config.credentialBindings,
+      environment: options.environment ?? process.env,
+    });
+    return invokeCompletedTool({
+      tab,
+      expectedOrigin,
+      toolName: HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME,
+      input: privateConnectRequest,
+      timeoutMs,
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
+    });
+  }
+  return invokeCompletedTool({
+    tab,
+    expectedOrigin,
+    toolName: HEYTRADERS_TOOL_NAME,
+    input: normalizedRequest,
+    timeoutMs,
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
+  });
 }
 
 export function formatToolError(error: unknown): {

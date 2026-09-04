@@ -7,6 +7,7 @@ x-openclaw-environment: &openclaw-environment
   OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
   OPENCLAW_CONFIG_DIR: /home/node/.openclaw
   OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+  XDG_CACHE_HOME: /home/node/.cache/openclaw-1000
   OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?Set OPENCLAW_GATEWAY_TOKEN in .env}
   TZ: ${OPENCLAW_TZ:-Asia/Seoul}
 
@@ -20,7 +21,14 @@ x-openclaw-runtime-volumes: &openclaw-runtime-volumes
 services:
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.2-browser@sha256:e164a318801fad2d49dc19b99adadfa629fa5f9ffb43673e73661c1d3f9cc7de}
-    environment: *openclaw-environment
+    env_file:
+      - ${HEYTRADERS_AGENT_ENV_FILE:-./.env.agent}
+    environment:
+      <<: *openclaw-environment
+      HEYTRADERS_LOCAL_APP_PROXY: ${HEYTRADERS_LOCAL_APP_PROXY:-true}
+      HEYTRADERS_LOCAL_APP_UPSTREAM_HOST: ${HEYTRADERS_LOCAL_APP_UPSTREAM_HOST:-host.docker.internal}
+      HEYTRADERS_LOCAL_APP_UPSTREAM_PORT: ${HEYTRADERS_LOCAL_APP_UPSTREAM_PORT:-5174}
+      HEYTRADERS_LOCAL_APP_PORT: ${HEYTRADERS_LOCAL_APP_PORT:-5174}
     volumes: *openclaw-runtime-volumes
     ports:
       - 127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789
@@ -34,6 +42,9 @@ services:
     restart: unless-stopped
     shm_size: 1gb
     command:
+      - node
+      - /workspace/HeyTraders-OpenClaw/scripts/docker-gateway.mjs
+      - --
       - node
       - dist/index.js
       - gateway

@@ -172,6 +172,7 @@ describe("formatErrorForLog", () => {
 type FakeWebSocketOptions = {
   advertisedFrameId?: string;
   advertisedToolName?: string;
+  bootstrapFromAboutBlank?: boolean;
   closeBeforeResponse?: boolean;
   errorText?: string;
   mainFrameUrl?: string;
@@ -215,11 +216,24 @@ class FakeWebSocket implements WebSocketLike {
             frameTree: {
               frame: {
                 id: canonicalTab.targetId,
-                url: this.options.mainFrameUrl ?? canonicalTab.url,
+                url: this.options.bootstrapFromAboutBlank
+                  ? "about:blank"
+                  : (this.options.mainFrameUrl ?? canonicalTab.url),
               },
             },
           },
         });
+        if (this.options.bootstrapFromAboutBlank) {
+          this.emitMessage({
+            method: "Page.frameNavigated",
+            params: {
+              frame: {
+                id: canonicalTab.targetId,
+                url: canonicalTab.url,
+              },
+            },
+          });
+        }
         if (this.options.navigateAfterFrameTree) {
           this.emitMessage({
             method: "Page.frameNavigated",
@@ -325,6 +339,31 @@ describe("invokeHeyTradersWebMcpTool", () => {
       "WebMCP.invokeTool",
     ]);
     expect(socket.invocationInput).toEqual([{ command: "help", args: {} }]);
+  });
+
+  it("waits for a newly-created about:blank tab to reach HeyTraders", async () => {
+    const socket = new FakeWebSocket({ bootstrapFromAboutBlank: true });
+    const createWebSocket: WebSocketFactory = vi.fn(() => {
+      queueMicrotask(() => socket.open());
+      return socket;
+    });
+
+    await expect(
+      invokeHeyTradersWebMcpTool({
+        wsUrl: canonicalTab.wsUrl,
+        targetId: canonicalTab.targetId,
+        input: { command: "status", args: {} },
+        timeoutMs: 1_000,
+        createWebSocket,
+      }),
+    ).resolves.toMatchObject({ status: "Completed" });
+
+    expect(socket.sent.map((request) => request.method)).toEqual([
+      "Page.enable",
+      "Page.getFrameTree",
+      "WebMCP.enable",
+      "WebMCP.invokeTool",
+    ]);
   });
 
   it("preserves a structured WebMCP error status", async () => {

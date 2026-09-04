@@ -10,7 +10,7 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 
 ## Operating loop
 
-1. Confirm the browser transport is ready with `status` when readiness is uncertain.
+1. Confirm the browser transport is ready with `status` when readiness is uncertain. The plugin automatically opens `/agent` and creates or resumes its Agent-owned HeyTraders browser session before executing the command.
 2. Discover only what the current request needs:
    - Use `help` for the top-level live catalog.
    - Use `help <domain>` to narrow the catalog.
@@ -23,12 +23,28 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 
    Do not repeat structured arguments inside the command selector.
 4. After a command that may change application state, read the affected state again before claiming success or taking a dependent action.
-5. Preserve structured errors and `userActionRequired` results. Explain the exact visible browser step the user must complete, then re-read state after the user finishes it.
+5. Preserve structured errors and `userActionRequired` results. Explain the exact visible browser step only when the live application or venue genuinely requires one, then re-read state after it finishes.
+
+## Exchange connection
+
+1. Read `exchange guide` for the requested venue and refresh `exchange status` or `exchange connections` before connecting.
+2. For `exchange connect`, send only the canonical exchange and, when configured, a safe binding reference:
+
+   ```json
+   {"command":"exchange connect","args":{"exchange":"binance","connectionRef":"binance-main"}}
+   ```
+
+3. `connectionRef` names a local HeyTraders plugin binding. It is not a live page catalog field and is intercepted by the trusted adapter before public command dispatch.
+4. Never ask the user to paste a credential into chat or tool arguments. If the adapter reports a missing or ambiguous binding, ask the operator to configure the named environment variable or select one reported reference outside the conversation.
+5. After success, read `exchange credential_status` for the returned account ID and then `exchange status` before claiming the venue is ready.
+
+CEX bindings use `cex_api_key` with API-key and secret environment names. DEX bindings use `dex_extended`, mapping live venue credential field names to environment names. The latter supports Hyperliquid-style private keys, account addresses, delegated API-wallet keys, and vault fields without pretending they follow a CEX schema.
 
 ## Safety and ownership
 
-- Never send login details, API keys, exchange credentials, wallet secrets, tokens, cookies, private keys, browser storage, or recovery phrases through `heytraders_cli`.
-- Login, exchange connection, wallet approval, CAPTCHA, 2FA, and visible confirmations belong to the user in the HeyTraders browser.
+- Never put login details, API keys, exchange credentials, wallet secrets, tokens, cookies, private keys, browser storage, or recovery phrases in model-visible `heytraders_cli` arguments.
+- The plugin's trusted private transport may resolve configured secret values from its process environment only after automatic Agent authentication. Do not reproduce, summarize, or log those values.
+- Agent login does not require Google login, a Link Agent code, Codex OAuth, or a human browser handoff. The configured AI provider is independent of the HeyTraders Agent identity.
 - Do not invent or reuse stale command names, IDs, schemas, readiness, venue metadata, or chart capabilities. Refresh them from the live catalog.
 - Do not call a HeyTraders HTTP API, shell command, page script, undocumented bridge member, or fallback transport to bypass this tool.
 - Do not bypass confirmations, authorization, quotas, or other application policy. A command being discoverable does not by itself authorize a state change.
@@ -36,9 +52,9 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 
 ## Browser transport recovery
 
-The adapter accepts exactly one eligible page at `https://hey-traders.com` in the managed OpenClaw browser profile.
+The adapter accepts exactly one eligible `/agent` page at its configured HeyTraders origin in the managed OpenClaw browser profile.
 
-- If no eligible tab exists, open the canonical HeyTraders origin in that managed profile and retry after it loads.
-- If multiple eligible tabs exist, keep one intended tab and close the duplicates before retrying.
-- If the user is not authenticated, stop at the visible login handoff. Do not import, inspect, or copy credentials on their behalf.
+- If no eligible tab exists, let the next tool call create the exact `/agent` page; if the browser profile itself is stopped, start it first.
+- If multiple eligible Agent bootstrap tabs exist, keep one intended tab and close the duplicates before retrying.
+- If automatic authentication fails, preserve the structured Agent-auth error. Do not redirect to human login or attempt a legacy API-key/link flow.
 - If the live page does not expose `heytraders_cli`, report the transport error instead of guessing a legacy path.
