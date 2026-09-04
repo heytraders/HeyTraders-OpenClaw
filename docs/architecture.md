@@ -22,7 +22,7 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 - Resolves the Agent browser cookie into the same canonical user principal used by accounts, billing, quota, strategies, and orders.
 - Creates single-use Agent exchange intents bound to the Agent `user_id`, Agent identity, mainnet connection address, exchange, completion type, and Wallet Vault public key.
 - Verifies the Wallet Vault's completion signature before accepting a transient signer, venue signatures, Polymarket signer, or operator-entered CEX credential.
-- Owns Polymarket Builder secrets and official Deposit Wallet/trading-approval provisioning; those secrets never enter OpenClaw or the Vault.
+- Owns Polymarket Builder secrets and official Deposit Wallet/trading-approval provisioning; it persists and returns only the public Deposit Wallet as `venueFundingAddress`, while those secrets never enter OpenClaw or the Vault.
 - Validates and encrypts venue credentials through the existing account/broker path.
 
 ### Agent Wallet Vault

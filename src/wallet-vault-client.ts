@@ -38,6 +38,7 @@ export type WalletVaultPublicState = {
   network: "mainnet";
   walletRef: string;
   fundingAddress: string;
+  venueFundingAddress?: string;
   vaultPublicKey: string;
   state: "awaiting_funding" | "ready" | "completed";
   funded: boolean;
@@ -56,6 +57,7 @@ export type AgentWalletIntent = {
   network: "mainnet";
   walletRef: string;
   fundingAddress: string;
+  venueFundingAddress?: string;
   state: string;
   expiresAtMs: number;
   challenge: string;
@@ -148,6 +150,7 @@ export function parseWalletVaultResponse(
     "network",
     "wallet_ref",
     "funding_address",
+    "venue_funding_address",
     "vault_public_key",
     "state",
     "funded",
@@ -160,6 +163,7 @@ export function parseWalletVaultResponse(
   }
   const walletRef = optionalString(value.wallet_ref, WALLET_REF_PATTERN);
   const fundingAddress = optionalString(value.funding_address, ADDRESS_PATTERN);
+  const venueFundingAddress = optionalString(value.venue_funding_address, ADDRESS_PATTERN);
   const vaultPublicKey = optionalString(value.vault_public_key, PUBLIC_KEY_PATTERN);
   const intentId = optionalString(value.intent_id, UUID_PATTERN);
   const accountId = optionalString(value.account_id);
@@ -174,6 +178,8 @@ export function parseWalletVaultResponse(
     || typeof value.state !== "string"
     || !PUBLIC_STATES.has(value.state)
     || typeof value.funded !== "boolean"
+    || (value.exchange === "polymarket" && value.state === "completed" && !venueFundingAddress)
+    || (value.state !== "completed" && venueFundingAddress !== undefined)
     || (value.state === "awaiting_funding" && value.funded)
     || (value.exchange === "hyperliquid"
       && (value.state === "ready" || value.state === "completed")
@@ -187,6 +193,7 @@ export function parseWalletVaultResponse(
     network: "mainnet",
     walletRef,
     fundingAddress,
+    ...(venueFundingAddress ? { venueFundingAddress } : {}),
     vaultPublicKey,
     state: value.state as WalletVaultPublicState["state"],
     funded: value.funded,
@@ -567,6 +574,7 @@ export function parseAgentWalletIntent(
     "network",
     "walletRef",
     "fundingAddress",
+    "venueFundingAddress",
     "state",
     "expiresAtMs",
     "challenge",
@@ -581,6 +589,7 @@ export function parseAgentWalletIntent(
   const intentId = optionalString(data.intentId, UUID_PATTERN);
   const walletRef = optionalString(data.walletRef, WALLET_REF_PATTERN);
   const fundingAddress = optionalString(data.fundingAddress, ADDRESS_PATTERN);
+  const venueFundingAddress = optionalString(data.venueFundingAddress, ADDRESS_PATTERN);
   const challenge = optionalString(data.challenge);
   const accountId = optionalString(data.accountId);
   const errorCode = optionalString(data.errorCode, ERROR_CODE_PATTERN);
@@ -613,6 +622,12 @@ export function parseAgentWalletIntent(
     || (requireChallenge && !challenge)
     || !completionType
     || completionType !== expectedCompletionType
+    || (
+      data.exchange === "polymarket"
+      && data.state === "completed"
+      && !venueFundingAddress
+    )
+    || (data.state !== "completed" && venueFundingAddress !== undefined)
     || (requireChallenge && completionType === "wallet_signatures" && signingRequests.length === 0)
     || (!requireChallenge && signingRequests.length !== 0)
   ) {
@@ -624,6 +639,7 @@ export function parseAgentWalletIntent(
     network: "mainnet",
     walletRef,
     fundingAddress,
+    ...(venueFundingAddress ? { venueFundingAddress } : {}),
     state: data.state,
     expiresAtMs: data.expiresAtMs as number,
     challenge: challenge ?? "",
@@ -646,6 +662,9 @@ function connectionResult(wallet: WalletVaultPublicState): Record<string, unknow
       network: "mainnet",
       walletRef: wallet.walletRef,
       fundingAddress: wallet.fundingAddress,
+      ...(wallet.venueFundingAddress
+        ? { venueFundingAddress: wallet.venueFundingAddress }
+        : {}),
       state: wallet.state,
       funded: wallet.funded,
       connected: completed,
@@ -702,7 +721,11 @@ export async function orchestrateAgentWallet(params: {
     false,
     params.exchange,
   );
-  if (status.state !== "completed" || status.accountId !== completed.accountId) {
+  if (
+    status.state !== "completed"
+    || status.accountId !== completed.accountId
+    || status.venueFundingAddress !== completed.venueFundingAddress
+  ) {
     throw new WalletVaultError(
       "WALLET_CONNECTION_UNCONFIRMED",
       "HeyTraders did not confirm the connected Agent wallet.",

@@ -13,6 +13,7 @@ import {
 
 const INTENT_ID = "16e3c6cb-a999-4acc-ae27-a80a730b91a8";
 const FUNDING_ADDRESS = `0x${"1".repeat(40)}`;
+const VENUE_FUNDING_ADDRESS = `0x${"9".repeat(40)}`;
 const VAULT_PUBLIC_KEY = "A".repeat(43);
 const EXPIRES_AT_MS = 1_900_000_000_000;
 
@@ -323,5 +324,70 @@ describe("Hyperliquid Wallet Vault orchestration", () => {
       funding_address: FUNDING_ADDRESS,
     });
     expect(JSON.stringify(connectBody)).not.toMatch(/private|secret|credential/iu);
+  });
+});
+
+describe("Polymarket Wallet Vault orchestration", () => {
+  it("returns the provisioned Deposit Wallet separately from the signer", async () => {
+    const ready = {
+      ...publicState("ready"),
+      exchange: "polymarket",
+      wallet_ref: "polymarket-main",
+      funded: false,
+    };
+    const completed = {
+      ...publicState("completed"),
+      exchange: "polymarket",
+      wallet_ref: "polymarket-main",
+      funded: false,
+      venue_funding_address: VENUE_FUNDING_ADDRESS,
+    };
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(response(ready))
+      .mockResolvedValueOnce(response(completed));
+    const client = new WalletVaultClient({ fetch: fetchFn });
+    const preparedIntent = {
+      ...browserIntent("prepare"),
+      data: {
+        ...browserIntent("prepare").data,
+        exchange: "polymarket",
+        walletRef: "polymarket-main",
+        challenge: browserIntent("prepare").data.challenge
+          ?.replace("exchange:hyperliquid", "exchange:polymarket")
+          .replace("wallet_ref:hyperliquid-main", "wallet_ref:polymarket-main"),
+        completionType: "polymarket_provision",
+        signingRequests: [],
+      },
+    };
+    const statusIntent = {
+      ...browserIntent("status"),
+      data: {
+        ...browserIntent("status").data,
+        exchange: "polymarket",
+        walletRef: "polymarket-main",
+        completionType: "polymarket_provision",
+        signingRequests: [],
+        venueFundingAddress: VENUE_FUNDING_ADDRESS,
+      },
+    };
+    const invokeAgentExchange = vi
+      .fn()
+      .mockResolvedValueOnce(preparedIntent)
+      .mockResolvedValueOnce(statusIntent);
+
+    const result = await orchestrateAgentWallet({
+      exchange: "polymarket",
+      client,
+      invokeAgentExchange,
+    });
+
+    expect(result).toMatchObject({
+      data: {
+        fundingAddress: FUNDING_ADDRESS,
+        venueFundingAddress: VENUE_FUNDING_ADDRESS,
+        state: "completed",
+      },
+    });
   });
 });
