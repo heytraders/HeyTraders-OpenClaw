@@ -69,7 +69,7 @@ export default defineToolPlugin({
       name: "heytraders_cli",
       label: "HeyTraders CLI",
       description:
-        "Discover and invoke canonical HeyTraders commands through the Agent-owned browser session. The adapter creates or resumes its account automatically. Supported DEX connections are existing-wallet-first and require explicit walletAction create for isolated mainnet wallet creation. Binance credentials are accepted only by the loopback operator handoff and never by model-visible arguments.",
+        "Discover and invoke canonical HeyTraders commands through the Agent-owned browser session. The adapter creates or resumes its account automatically. Exchange onboarding is guide-first: wallets, venue accounts, and credentials are created outside HeyTraders, then connected through the live secure browser flow.",
       parameters: requestSchema,
       optional: true,
       execute: async (params, config, context) => {

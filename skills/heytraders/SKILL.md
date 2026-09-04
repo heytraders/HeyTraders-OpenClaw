@@ -6,73 +6,59 @@ user-invocable: false
 
 # HeyTraders Quant Trading Skills
 
-Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders OpenClaw plugin. The live HeyTraders page owns the command catalog, schemas, readiness, identifiers, workflow policy, and results. Do not replace that authority with remembered commands or copied schemas.
+Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders OpenClaw plugin. The live HeyTraders page owns command names, schemas, identifiers, onboarding documents, readiness, policy, and results. Never replace that authority with remembered commands, copied schemas, or guessed venue instructions.
 
 ## Operating loop
 
-1. Confirm the browser transport is ready with `status` when readiness is uncertain. The plugin automatically opens `/agent` and creates or resumes its Agent-owned HeyTraders browser session before executing the command.
+1. Use `status` when browser readiness is uncertain. The plugin opens the exact `/agent` page and creates or resumes its Agent-owned HeyTraders browser session before forwarding the requested command.
 2. Discover only what the current request needs:
-   - Use `help` for the top-level live catalog.
-   - Use `help <domain>` to narrow the catalog.
-   - Use `describe <command>` before a command when its current arguments, readiness, or execution policy are not already known from fresh output in this run.
-3. Invoke the tool with exactly one structured envelope:
+   - `help` lists current domains.
+   - `help <domain>` lists that domain's current commands.
+   - `describe <command>` returns the current argument and execution contract.
+3. Invoke one structured envelope and never repeat an argument inside the selector:
 
    ```json
-   { "command": "<live selector>", "args": { "<field>": "<value>" } }
+   {"command":"<live selector>","args":{"<field>":"<value>"}}
    ```
 
-   Do not repeat structured arguments inside the command selector.
-4. After a command that may change application state, read the affected state again before claiming success or taking a dependent action.
-5. Preserve structured errors and `userActionRequired` results. Explain the exact visible browser step only when the live application or venue genuinely requires one, then re-read state after it finishes.
+4. After a state-changing command, read the affected state again before claiming success.
+5. Preserve structured errors and user-action handoffs. Do not turn a displayed dialog or a submitted request into an unverified success claim.
 
-## Exchange connection
+## Exchange onboarding
 
-1. Read `exchange guide` for the requested venue and refresh `exchange status` or `exchange connections` before connecting.
-2. For Hyperliquid, Extended, Lighter, Polymarket Perps, or Polymarket prediction, first send the canonical selector without a wallet action. This tries only a compatible existing wallet already exposed to the Agent browser:
+HeyTraders and this plugin do not create wallets, venue accounts, API keys, signing keys, or a local wallet/Vault service for OpenClaw. They also do not prescribe how an Agent stores an existing wallet. Wallet and credential preparation belongs to the selected venue and to capabilities already chosen by the OpenClaw operator.
+
+For every exchange connection:
+
+1. Run `help exchange` when the exchange commands are not already fresh in the current run.
+2. Run `exchange list` and select only an exchange identifier returned by that live result.
+3. Run `exchange guide` for that exact identifier before attempting connection. Treat its document revision, requirements, permission limits, current Trusted IP metadata, setup steps, and official references as authoritative.
+4. If the Agent does not yet have the required venue account, wallet, or credential, follow the venue-owned preparation described by that guide outside HeyTraders. Use only wallet, browser, or venue tooling already available in the Agent's environment. Do not install software, generate a wallet through HeyTraders, invent a wallet format, or substitute a generic wallet procedure.
+5. Never put an API key, secret, private key, seed phrase, recovery phrase, signature, cookie, token, or browser storage value in `heytraders_cli` arguments or chat. Secret entry and wallet approval belong only to the secure browser or venue surface identified by the live guide.
+6. Follow live navigation remediation when needed, then call `exchange connect` with only the canonical exchange identifier:
 
    ```json
-   {"command":"exchange connect","args":{"exchange":"<wallet-venue>"}}
+   {"command":"exchange connect","args":{"exchange":"<exchange-from-exchange-list>"}}
    ```
 
-3. The current existing-wallet adapter supports an EIP-1193 EVM provider already injected into the exact `/agent` browser page for Hyperliquid, Extended, Lighter, and Polymarket Perps. It does not scan OpenClaw files, environment variables, secret stores, wallet references, extensions, or arbitrary wallet formats. Polymarket prediction currently has no compatible existing-wallet adapter and therefore returns explicit creation guidance. Wallet material never enters the model-visible result.
-4. If the result is `existing_wallet_unsupported`, `existing_wallet_not_ready`, `existing_wallet_authorization_required`, or `existing_wallet_connection_failed`, preserve its reason and explain that the existing wallet cannot be connected through the current adapter. Do not automatically run the suggested creation command.
-5. Only after the user explicitly chooses a new Agent-owned wallet, send:
+7. If the result requires user or venue action, explain that exact step and stop the HeyTraders command flow until it is completed. Never claim to have approved a wallet request or entered credentials unless the responsible external capability returned its own verified result.
+8. After completion, run `exchange status`. When an account identifier is returned or needed, use `exchange connections` followed by `exchange credential_status` before claiming the connection is ready.
 
-   ```json
-   {"command":"exchange connect","args":{"exchange":"<wallet-venue>","walletAction":"create"}}
-   ```
-
-6. The plugin-managed path is mainnet-only. Never add `network`, `connectionRef`, wallet material, API keys, or credentials to the command request.
-7. Before any Agent-created address receives funds, remind the operator to back up both the encrypted Wallet Vault data volume and its separate root-key volume through an access-controlled offline process; never inspect or expose their contents.
-8. Hyperliquid creation is funding-first. If the result is `awaiting_funding`, show the returned public address, identify it as the Agent-owned Hyperliquid mainnet treasury, and wait for the user to fund it through a supported Hyperliquid mainnet deposit or transfer flow. After confirmation, run the same explicit creation command again. Do not claim that arbitrary token or network transfers will be credited.
-9. Extended, Lighter, and Polymarket Perps creation signs only the exact short-lived registration messages returned by HeyTraders. Polymarket prediction creation sends its isolated signer directly to the backend for official Builder/Deposit Wallet provisioning; after completion, use the returned public `venueFundingAddress` as the Deposit Wallet and do not confuse it with the Vault signer in `fundingAddress`. Preserve any venue prerequisite or retry error; never substitute a generic signature or export the wallet key.
-10. Binance and Binance Futures do not accept `walletAction`. Send only the selector:
-
-   ```json
-   {"command":"exchange connect","args":{"exchange":"binance"}}
-   ```
-
-   Return the loopback-only setup URL and ask the human operator to open it on the OpenClaw host within its expiry. The human enters a mainnet key with read and trade permission and withdrawals disabled. Do not ask for, receive, repeat, summarize, or inspect the key or secret in chat. After the operator says the form completed, re-read status.
-11. After any `completed` result, read `exchange credential_status` for the returned account ID when available and then `exchange status` before claiming the venue is ready.
-12. For other venues, preserve the live application's `userActionRequired` or browser handoff. This plugin does not read venue credentials from environment variables.
-
-Agent-created wallet keys remain encrypted in the Wallet Vault. The Vault has no model-facing key export, transfer, withdrawal, or order operation. Do not attempt a testnet flow; this integration rejects it before wallet creation or operator handoff preparation.
+Do not send `walletAction`, `network`, `walletRef`, connection secrets, or wallet material. There is no HeyTraders Agent-wallet creation fallback.
 
 ## Safety and ownership
 
-- Never put login details, API keys, exchange credentials, wallet secrets, tokens, cookies, private keys, browser storage, or recovery phrases in model-visible `heytraders_cli` arguments.
-- The Wallet Vault may send a newly approved signer or operator-entered CEX credential only through its proof-bound direct backend channel after automatic Agent authentication. Do not attempt to reproduce, summarize, export, or log that material.
-- Agent login does not require Google login, a Link Agent code, Codex OAuth, or a human browser handoff. The configured AI provider is independent of the HeyTraders Agent identity.
-- Do not invent or reuse stale command names, IDs, schemas, readiness, venue metadata, or chart capabilities. Refresh them from the live catalog.
-- Do not call a HeyTraders HTTP API, shell command, page script, undocumented bridge member, or fallback transport to bypass this tool.
-- Do not bypass confirmations, authorization, quotas, or other application policy. A command being discoverable does not by itself authorize a state change.
-- Treat financial or irreversible actions as user-owned final decisions. Present the live parameters and require the user's explicit instruction when the requested action has not already been clearly authorized.
+- The plugin stores only its Ed25519 HeyTraders login identity in the OpenClaw state directory. That identity authenticates the Agent account; it is not an exchange wallet or trading credential.
+- Agent login does not require Google login, a Link Agent code, Codex OAuth, or a human browser handoff. The selected AI provider is independent of the HeyTraders Agent identity.
+- Do not call a HeyTraders HTTP API, shell command, page script, undocumented bridge member, or fallback transport to bypass `heytraders_cli`.
+- Do not bypass confirmations, authorization, subscription limits, exchange permissions, or application policy. A discoverable command is not permission to perform an unrequested financial action.
+- Treat orders, strategy starts, wallet approvals, credential creation, deposits, and other irreversible actions as separate operations with their own explicit authority.
 
 ## Browser transport recovery
 
 The adapter accepts exactly one eligible `/agent` page at its configured HeyTraders origin in the managed OpenClaw browser profile.
 
-- If no eligible tab exists, let the next tool call create the exact `/agent` page; if the browser profile itself is stopped, start it first.
-- If multiple eligible Agent bootstrap tabs exist, keep one intended tab and close the duplicates before retrying.
-- If automatic authentication fails, preserve the structured Agent-auth error. Do not redirect to human login or attempt a legacy API-key/link flow.
-- If the live page does not expose `heytraders_cli`, report the transport error instead of guessing a legacy path.
+- If no eligible tab exists, let the next call create it. If the browser profile is stopped, start that existing profile first.
+- If multiple eligible tabs exist, keep one intended `/agent` tab and close the duplicates before retrying.
+- If automatic authentication fails, preserve the structured Agent-auth error. Do not redirect to human login or fall back to an API-key/Link Agent flow.
+- If the live page does not expose `heytraders_cli`, report the transport error rather than guessing a legacy path.

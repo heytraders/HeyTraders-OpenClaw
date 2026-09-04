@@ -1,18 +1,12 @@
 import { resolveBrowserConfig, resolveProfile } from "openclaw/plugin-sdk/browser-config";
 
 import { ensureAgentBrowserSession } from "./agent-auth.js";
-import {
-  orchestrateExchangeConnect,
-  parseExchangeConnectRequest,
-} from "./exchange-connect.js";
-import { WalletVaultClient } from "./wallet-vault-client.js";
 import { normalizeHeyTradersRequest, type HeyTradersRequest } from "./request-contract.js";
 
 export const DEFAULT_HEYTRADERS_ORIGIN = "https://hey-traders.com";
 const AGENT_BOOTSTRAP_PATH = "/agent";
 const HEYTRADERS_TOOL_NAME = "heytraders_cli";
 const HEYTRADERS_AGENT_AUTH_TOOL_NAME = "heytraders_agent_auth";
-const HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME = "heytraders_agent_exchange";
 const MAX_CDP_MESSAGE_BYTES = 8 * 1024 * 1024;
 const PAGE_ENABLE_REQUEST_ID = 1;
 const FRAME_TREE_REQUEST_ID = 2;
@@ -327,8 +321,7 @@ export function invokeWebMcpTool(params: {
   expectedOrigin: string;
   toolName:
     | typeof HEYTRADERS_TOOL_NAME
-    | typeof HEYTRADERS_AGENT_AUTH_TOOL_NAME
-    | typeof HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME;
+    | typeof HEYTRADERS_AGENT_AUTH_TOOL_NAME;
   input: unknown;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -773,8 +766,7 @@ async function invokeCompletedTool(params: {
   expectedOrigin: string;
   toolName:
     | typeof HEYTRADERS_TOOL_NAME
-    | typeof HEYTRADERS_AGENT_AUTH_TOOL_NAME
-    | typeof HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME;
+    | typeof HEYTRADERS_AGENT_AUTH_TOOL_NAME;
   input: unknown;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -852,24 +844,6 @@ export async function executeHeyTradersCommand(
         ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
       }),
   });
-  const exchangeConnect = parseExchangeConnectRequest(normalizedRequest);
-  if (exchangeConnect) {
-    return orchestrateExchangeConnect({
-      request: exchangeConnect,
-      client: new WalletVaultClient({ fetch: fetchFn, timeoutMs }),
-      invokeAgentExchange: (input) =>
-        invokeCompletedTool({
-          tab,
-          expectedOrigin,
-          toolName: HEYTRADERS_AGENT_EXCHANGE_TOOL_NAME,
-          input,
-          timeoutMs,
-          ...(options.signal ? { signal: options.signal } : {}),
-          ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
-        }),
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
-  }
   return invokeCompletedTool({
     tab,
     expectedOrigin,
@@ -914,9 +888,7 @@ export function formatErrorForLog(error: unknown): string {
   if (code && /^[A-Z0-9_]{1,64}$/u.test(code)) {
     const errorType = error.name === "RequestContractError"
       ? "RequestContractError"
-      : error.name === "WalletVaultError"
-        ? "WalletVaultError"
-        : "BrowserTransportError";
+      : "BrowserTransportError";
     return `${errorType} [${code}]`;
   }
   return "Error [HEYTRADERS_ADAPTER_ERROR]";

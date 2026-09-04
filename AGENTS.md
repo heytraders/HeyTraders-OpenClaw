@@ -2,36 +2,32 @@
 
 ## Scope
 
-This repository owns the OpenClaw-specific adapter, plugin packaging, provider guidance for HeyTraders browser commands, and Docker orchestration for the isolated Agent Wallet Vault implemented in the HeyTraders backend repository.
+This repository owns the OpenClaw-specific browser adapter, plugin packaging, Agent login identity, and discovery-first guidance for the live HeyTraders command catalog.
 
 ## Architectural rules
 
-- Treat the live HeyTraders frontend command catalogs and domain gateways as authoritative.
-- Keep `help` and `describe` as discovery primitives; do not copy the live catalog into source or prompt guidance.
-- Register a single structured `heytraders_cli` tool. Do not create one OpenClaw tool per HeyTraders command.
+- Treat the live HeyTraders Frontend catalogs, Docs registry, and domain gateways as authoritative.
+- Keep `help`, `help <domain>`, and `describe <command>` as discovery primitives; do not copy the live catalog into plugin code.
+- Register one structured `heytraders_cli` tool. Do not create one OpenClaw tool per command or an exchange-specific hidden tool.
 - Keep the adapter restricted to the exact production origin `https://hey-traders.com` by default.
-- Use only the generic request facade. Do not inspect or call individual bridge members.
-- Do not add a generic page-evaluation, direct HTTP API, shell CLI, or legacy bridge fallback.
-- The model-facing adapter must never read, accept, log, or persist credentials, cookies, tokens, local storage, or session storage. Hyperliquid wallet custody belongs only to the separately mounted, non-model Wallet Vault.
-- Agent login is automatic proof-of-possession. Hyperliquid mainnet connection may automatically approve and deliver a Vault-owned API signer after the user funds the public Agent treasury address; other venue handoffs remain owned by the live application.
-- Hyperliquid is mainnet-only. Reject testnet and arbitrary network overrides before wallet creation or venue approval.
-- Treat orders, strategy execution, settings changes, and chart mutations as stateful operations. Preserve request identity and ordered execution according to the live contract.
+- Use only the generic request facade. Do not call individual bridge members or add a page-evaluation, direct HTTP API, shell CLI, or legacy fallback.
+- Never read, accept, log, or persist exchange credentials, wallet secrets, cookies, tokens, local storage, or session storage in model-facing code.
+- Agent login is automatic proof-of-possession and is independent of exchange wallet custody.
+- HeyTraders does not create wallets or venue credentials for OpenClaw. Exchange onboarding must read `exchange list` and the revisioned `exchange guide`, then use the existing secure browser connection surface.
+- Do not require Docker, a Vault process, a wallet storage convention, or machine-specific software for plugin installation. Repository Compose is optional development infrastructure only.
+- Treat orders, strategy execution, settings changes, exchange connection, and chart mutations as stateful operations governed by the live contract.
 
-## OpenClaw packaging rules
+## Packaging rules
 
 - Use the official OpenClaw Plugin SDK and TypeScript ESM package shape.
 - Keep the tool optional so operators explicitly allow it.
-- Keep `package.json`, the built entry point, and `openclaw.plugin.json` capability declarations aligned.
-- Ship built JavaScript, not a TypeScript-only runtime entry.
-- Validate the packed artifact, not only the source checkout.
-- Keep the model-capable Gateway free of exchange-secret environment files and repository mounts; it may reach only the Vault's public prepare/connect surface over the fixed internal network origin.
-- Do not add `SKILL.md` until the required runtime tool is functional and verified.
+- Keep `package.json`, the built entry point, and `openclaw.plugin.json` aligned.
+- Ship built JavaScript and validate the packed artifact, not only source files.
+- Keep the Gateway free of exchange-secret environment files, wallet services, repository mounts, and Docker socket access.
 
 ## Verification and release
 
-- Test origin rejection, facade compatibility, UTF-8 payloads, timeouts, structured errors, and user-action handoffs.
-- Run the OpenClaw plugin build and validation commands supported by the pinned SDK version.
-- Run `npm pack` and inspect the archive before any release.
-- Use fake venue/backend adapters for automated Wallet Vault tests. Real Hyperliquid wallet creation, funding, approval, and credential verification require the explicit operator-assisted mainnet checkpoint.
-- Run ClawHub publishing with `--dry-run` first.
-- Never publish to ClawHub, change repository visibility, or create a public release without explicit user approval.
+- Test origin rejection, facade compatibility, UTF-8 payloads, timeouts, structured errors, automatic Agent authentication, and user-action handoffs.
+- Prove that `exchange connect` is forwarded unchanged to the canonical browser tool and that no `walletAction` or Vault module ships.
+- Run the OpenClaw build, plugin check/validation, tests, `npm pack`, and archive inspection before release.
+- Never perform a real wallet approval, credential entry, funding action, order, deployment, ClawHub update, npm publish, or GitHub release without explicit user authorization.

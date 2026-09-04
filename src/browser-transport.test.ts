@@ -5,6 +5,7 @@ import {
   assertSafeCdpHttpUrl,
   assertSafeCdpWebSocketUrl,
   decodeHeyTradersOutput,
+  executeHeyTradersCommand,
   formatErrorForLog,
   invokeHeyTradersWebMcpTool,
   parseBrowserTabs,
@@ -497,5 +498,83 @@ describe("invokeHeyTradersWebMcpTool", () => {
         createWebSocket,
       }),
     ).rejects.toMatchObject({ code: "WEBMCP_SOCKET_CLOSED", retryable: true });
+  });
+});
+
+describe("executeHeyTradersCommand", () => {
+  it("forwards exchange connect unchanged to the canonical browser command tool", async () => {
+    const authSocket = new FakeWebSocket({
+      advertisedToolName: "heytraders_agent_auth",
+      responseOutput: {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              data: {
+                authenticated: true,
+                userId: "7d50b461-5031-4f25-b70f-89ec7f6bd6d1",
+                agentId: "16e3c6cb-a999-4acc-ae27-a80a730b91a8",
+              },
+            }),
+          },
+        ],
+      },
+    });
+    const commandSocket = new FakeWebSocket({
+      advertisedToolName: "heytraders_cli",
+      responseOutput: {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              domain: "exchange",
+              action: "connect",
+              data: { state: "user-action-required" },
+            }),
+          },
+        ],
+      },
+    });
+    const sockets = [authSocket, commandSocket];
+    const createWebSocket: WebSocketFactory = () => {
+      const socket = sockets.shift();
+      if (!socket) throw new Error("unexpected WebMCP invocation");
+      queueMicrotask(() => socket.open());
+      return socket;
+    };
+
+    await expect(
+      executeHeyTradersCommand(
+        { command: "exchange connect", args: { exchange: "hyperliquid" } },
+        { timeoutMs: 1_000 },
+        {
+          gateway: { port: 18_789 },
+          browser: { enabled: true, profiles: { openclaw: { cdpPort: 18_800 } } },
+        },
+        {
+          stateDir: "/tmp/heytraders-browser-transport-test",
+          fetch: async () =>
+            new Response(
+              JSON.stringify([{ ...canonicalTab, url: "https://hey-traders.com/agent" }]),
+              {
+              headers: { "content-type": "application/json" },
+              },
+            ),
+          createWebSocket,
+        },
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      domain: "exchange",
+      action: "connect",
+      data: { state: "user-action-required" },
+    });
+
+    expect(authSocket.invocationInput).toEqual([{ operation: "status" }]);
+    expect(commandSocket.invocationInput).toEqual([
+      { command: "exchange connect", args: { exchange: "hyperliquid" } },
+    ]);
   });
 });
