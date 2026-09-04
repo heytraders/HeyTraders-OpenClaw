@@ -13,7 +13,7 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 - Registers and executes the live command catalog.
 - Owns command schemas, readiness, identifiers, policy, idempotency, and presentation.
 - Returns structured success, error, and user-action-required results.
-- Hosts the exact `/agent` bootstrap surface and two private WebMCP tools for proof-of-possession login and public Wallet Vault intent preparation/status.
+- Hosts the exact `/agent` bootstrap surface and private WebMCP tools for proof-of-possession login, existing browser-wallet capability/connection, and public Wallet Vault intent preparation/status.
 
 ### HeyTraders backend
 
@@ -27,7 +27,7 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 ### Agent Wallet Vault
 
 - Runs as a separate non-root container with no host port and no model-facing tool.
-- Creates and persists one Agent-owned Hyperliquid mainnet treasury/master wallet.
+- Creates and persists one Agent-owned Hyperliquid mainnet treasury/master wallet only after an explicit creation request.
 - Keeps its AES root key and encrypted records in separate named volumes.
 - Returns only public wallet state and the mainnet funding address to OpenClaw.
 - Checks funding, rotates a fresh signer in one stable named Hyperliquid API-wallet slot with the official SDK, and sends that signer directly to the HeyTraders backend against a signed one-time intent.
@@ -44,7 +44,7 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 - Rejects remote, extension-attached, `attachOnly`, non-loopback, wrong-origin, missing, and ambiguous targets.
 - Invokes the page-defined authentication tool before every application command.
 - Invokes the public page-defined `heytraders_cli` tool for normal commands.
-- For exact Hyperliquid `exchange connect`, coordinates the fixed internal Wallet Vault with the private page-defined public-intent tool.
+- For exact Hyperliquid `exchange connect`, first asks the private page-defined exchange tool for a compatible existing wallet; it coordinates the fixed internal Wallet Vault only for explicit `walletAction: "create"`.
 - Preserves structured responses without inventing application policy.
 
 ### Bundled skill
@@ -52,7 +52,7 @@ HeyTraders already owns a live, capability-driven command system. The OpenClaw i
 - Explains when and how to use the tool.
 - Uses live `help` and `describe` discovery instead of copied command contracts.
 - Requires state re-reading after mutations and genuine venue handoffs.
-- Keeps credentials out of model-visible arguments and explains the public-address funding checkpoint.
+- Keeps credentials out of model-visible arguments, explains existing-wallet compatibility limits, and treats the public-address funding checkpoint as an explicit creation path.
 
 ## Transport sequence
 
@@ -67,10 +67,12 @@ For every call, `src/browser-transport.ts` performs the following sequence:
 7. Enable CDP page lifecycle events and read `Page.getFrameTree` to revalidate the current top-level frame origin after connecting.
 8. Invoke the private auth tool's `status`; when unauthenticated, request a challenge, validate the server's canonical bytes, sign them with the local private key, and complete the session.
 9. For normal commands, invoke public `heytraders_cli`.
-10. For exact Hyperliquid `exchange connect`, call the fixed internal Vault prepare operation. If the treasury is unfunded, return only its mainnet public funding address.
-11. When funded, invoke the private page tool to create a one-time intent for the authenticated Agent, pass that public intent to the Vault, and let the Vault approve and deliver the API signer directly to the backend.
-12. Read the browser-side intent status and return completion only when both Vault and HeyTraders report the same connected account.
-13. For every page invocation, accept the named tool only when its registration `frameId` equals the canonical top-level frame, fail on navigation or detach, correlate the response, and enforce time and message-size limits.
+10. For exact Hyperliquid `exchange connect` with no action or `walletAction: "existing"`, ask the private exchange tool whether an EIP-1193 provider is available on the exact Agent page.
+11. If available, invoke the existing HeyTraders Hyperliquid browser-wallet flow and return only its public connection state. If unavailable or incompatible, return explicit creation guidance without calling the Vault.
+12. Only for `walletAction: "create"`, call the fixed internal Vault prepare operation. If the treasury is unfunded, return only its mainnet public funding address.
+13. When that explicitly created treasury is funded, invoke the private page tool to create a one-time intent for the authenticated Agent, pass that public intent to the Vault, and let the Vault approve and deliver the API signer directly to the backend.
+14. Read the browser-side intent status and return completion only when both Vault and HeyTraders report the same connected account.
+15. For every page invocation, accept the named tool only when its registration `frameId` equals the canonical top-level frame, fail on navigation or detach, correlate the response, and enforce time and message-size limits.
 
 There is no arbitrary JavaScript evaluation, direct bridge call, cookie or browser-storage extraction, environment credential binding, public Agent API-key bootstrap, or shell fallback. Wallet secret values never enter the Gateway, model request, browser tool input/output, DOM, or OpenClaw configuration.
 
@@ -80,8 +82,8 @@ There is no arbitrary JavaScript evaluation, direct bridge call, cookie or brows
 2. **One command authority:** current runtime `help` and `describe` output outrank remembered or durable guidance.
 3. **Exact origin and route:** only the configured approved origin's `/agent` surface is eligible.
 4. **Stable identity:** one protected local Ed25519 key resumes one HeyTraders `user_id`; a new key creates a new user rather than guessing ownership.
-5. **No model credential transport:** public tool parameters reject credential-like fields; Hyperliquid connect accepts only its canonical exchange selector.
-6. **Vault-only custody:** the master key remains in the isolated Vault; a temporary API signer crosses only the direct signed Vault-to-backend request and is then erased locally.
+5. **No model credential transport:** public tool parameters reject credential-like fields; Hyperliquid connect accepts only its canonical exchange selector plus optional `walletAction: "existing" | "create"`.
+6. **Explicit Vault custody:** the default existing-wallet path never contacts the Vault. After explicit creation, the master key remains in the isolated Vault; a temporary API signer crosses only the direct signed Vault-to-backend request and is then erased locally.
 7. **No policy duplication:** authorization, quota, credential validation/encryption, and application state remain owned by HeyTraders.
 8. **Mainnet only:** testnet and arbitrary network overrides are rejected before wallet creation, intent preparation, or venue approval.
 9. **Fail closed:** missing browser capability, unsupported profile, wrong or changing top-level origin, child-frame tool collision, multiple eligible tabs, unsafe CDP, auth failure, intent mismatch, timeout, or invalid Vault/WebMCP output returns a structured error without a legacy fallback.
@@ -109,9 +111,11 @@ The Agent private key is generated atomically with owner-only file permissions u
 
 This path is independent of Google login, Link Agent codes, Codex OAuth, and the selected OpenClaw AI provider.
 
-### Agent-owned Hyperliquid wallet
+### Hyperliquid wallet selection
 
-The adapter intercepts only exact `exchange connect` with `exchange: "hyperliquid"`; it rejects extra selectors such as a network or credential reference. The Vault creates one persistent EVM treasury, but no venue action occurs while it is unfunded. The user transfers funds to the returned public mainnet address through a supported Hyperliquid flow and runs the same command again.
+The adapter intercepts only exact `exchange connect` with `exchange: "hyperliquid"` and an optional `walletAction` enum; it rejects selectors such as a network or credential reference. Omission means `existing`. That path checks only for an EIP-1193 provider already injected into the exact Agent page and delegates connection to the existing HeyTraders Hyperliquid browser-wallet service. It does not enumerate OpenClaw secrets, infer how another wallet is stored, or force a `walletRef` convention. If no compatible provider is available, it returns guidance and never prepares a Vault wallet.
+
+Only explicit `walletAction: "create"` calls the Vault. The Vault then creates or resumes one persistent EVM treasury, but no venue action occurs while it is unfunded. The user transfers funds to the returned public mainnet address through a supported Hyperliquid flow and runs the same explicit command again.
 
 After funding, the page derives the canonical Agent `user_id` from its browser session and creates a short-lived intent containing only public identity fields. The Vault verifies those exact fields, rotates a fresh signer in one stable named Hyperliquid API-wallet slot, signs a completion message whose digest binds the signer without embedding it, and posts the signer directly to the backend. Reusing the name makes Hyperliquid replace the preceding signer instead of consuming another named-agent slot; the Vault then securely deletes any superseded failed-delivery ciphertext. The backend verifies the Vault signature and reuses the existing account connection boundary, which owns plan enforcement, exchange lookup, credential validation, encryption, rollback, and broker transition fencing. The Vault erases its temporary signer after confirmation. A storage response is not treated as venue readiness; the Agent must re-read credential and exchange status.
 

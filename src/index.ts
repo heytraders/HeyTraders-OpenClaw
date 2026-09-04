@@ -69,7 +69,7 @@ export default defineToolPlugin({
       name: "heytraders_cli",
       label: "HeyTraders CLI",
       description:
-        "Discover and invoke canonical HeyTraders commands through the Agent-owned browser session. The adapter creates or resumes its account automatically. An exact Hyperliquid exchange connect creates an isolated mainnet Agent wallet, returns its public funding address, and connects it after funding without exposing wallet keys to the model or browser.",
+        "Discover and invoke canonical HeyTraders commands through the Agent-owned browser session. The adapter creates or resumes its account automatically. Hyperliquid connect first tries a compatible existing browser wallet; unsupported wallets receive explicit creation guidance, and only walletAction create may create or resume the isolated mainnet Agent wallet.",
       parameters: requestSchema,
       optional: true,
       execute: async (params, config, context) => {

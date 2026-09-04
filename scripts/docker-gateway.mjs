@@ -18,8 +18,8 @@ const parsePort = (name, fallback) => {
 let proxy;
 if (process.env.HEYTRADERS_LOCAL_APP_PROXY === "true") {
   const upstreamHost = process.env.HEYTRADERS_LOCAL_APP_UPSTREAM_HOST || "host.docker.internal";
-  const upstreamPort = parsePort("HEYTRADERS_LOCAL_APP_UPSTREAM_PORT", 5174);
-  const localPort = parsePort("HEYTRADERS_LOCAL_APP_PORT", 5174);
+  const upstreamPort = parsePort("HEYTRADERS_LOCAL_APP_UPSTREAM_PORT", 5173);
+  const localPort = parsePort("HEYTRADERS_LOCAL_APP_PORT", 5173);
   proxy = net.createServer((downstream) => {
     const upstream = net.connect({ host: upstreamHost, port: upstreamPort });
     const close = () => {

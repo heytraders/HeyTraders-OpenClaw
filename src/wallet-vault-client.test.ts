@@ -5,7 +5,6 @@ import {
   WALLET_VAULT_ORIGIN,
   WalletVaultClient,
   WalletVaultError,
-  isHyperliquidConnectRequest,
   orchestrateHyperliquidWallet,
   parseAgentWalletIntent,
   parseWalletVaultResponse,
@@ -225,26 +224,5 @@ describe("Hyperliquid Wallet Vault orchestration", () => {
       funding_address: FUNDING_ADDRESS,
     });
     expect(JSON.stringify(connectBody)).not.toMatch(/private|secret|credential/iu);
-  });
-
-  it("intercepts only exact Hyperliquid connects and rejects network overrides", () => {
-    expect(
-      isHyperliquidConnectRequest({
-        command: "exchange connect",
-        args: { exchange: "hyperliquid" },
-      }),
-    ).toBe(true);
-    expect(
-      isHyperliquidConnectRequest({
-        command: "exchange connect",
-        args: { exchange: "binance" },
-      }),
-    ).toBe(false);
-    expect(() =>
-      isHyperliquidConnectRequest({
-        command: "exchange connect",
-        args: { exchange: "hyperliquid", network: "testnet" },
-      }),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_EXCHANGE_CONNECT_ARGS" }));
   });
 });

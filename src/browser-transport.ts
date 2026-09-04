@@ -2,10 +2,10 @@ import { resolveBrowserConfig, resolveProfile } from "openclaw/plugin-sdk/browse
 
 import { ensureAgentBrowserSession } from "./agent-auth.js";
 import {
-  WalletVaultClient,
-  isHyperliquidConnectRequest,
-  orchestrateHyperliquidWallet,
-} from "./wallet-vault-client.js";
+  orchestrateHyperliquidConnect,
+  parseHyperliquidConnectRequest,
+} from "./hyperliquid-connect.js";
+import { WalletVaultClient } from "./wallet-vault-client.js";
 import { normalizeHeyTradersRequest, type HeyTradersRequest } from "./request-contract.js";
 
 export const DEFAULT_HEYTRADERS_ORIGIN = "https://hey-traders.com";
@@ -852,8 +852,10 @@ export async function executeHeyTradersCommand(
         ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
       }),
   });
-  if (isHyperliquidConnectRequest(normalizedRequest)) {
-    return orchestrateHyperliquidWallet({
+  const hyperliquidConnect = parseHyperliquidConnectRequest(normalizedRequest);
+  if (hyperliquidConnect) {
+    return orchestrateHyperliquidConnect({
+      walletAction: hyperliquidConnect.walletAction,
       client: new WalletVaultClient({ fetch: fetchFn, timeoutMs }),
       invokeAgentExchange: (input) =>
         invokeCompletedTool({

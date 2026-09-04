@@ -9,7 +9,7 @@ OpenClaw integration for operating [HeyTraders](https://hey-traders.com/) throug
 - One optional OpenClaw tool, `heytraders_cli`, with a structured `{ command, args }` request envelope.
 - One bundled, model-visible skill that teaches discovery-first command use without copying the live catalog.
 - A persistent local Ed25519 Agent identity that automatically creates or resumes one first-class HeyTraders `user_id`.
-- A separate encrypted Wallet Vault that creates and owns one persistent Hyperliquid mainnet treasury for the Agent.
+- An existing-wallet-first Hyperliquid path plus a separate encrypted Wallet Vault that creates a persistent mainnet treasury only when explicitly requested.
 - A loopback-only Docker Compose environment pinned to the official OpenClaw `2026.8.2-browser` image digest.
 
 Command names, schemas, readiness, identifiers, and application policy remain owned by the live HeyTraders page. The adapter starts from `help`, `help <domain>`, and `describe <command>` rather than maintaining a second catalog.
@@ -21,22 +21,28 @@ OpenClaw agent
   -> optional heytraders_cli tool
     -> HeyTraders OpenClaw plugin
       -> create/resume local Agent identity
-      -> fixed internal Wallet Vault client for exact Hyperliquid connect
-        -> create/resume encrypted mainnet treasury
-        -> return only its public funding address until funded
       -> public OpenClaw browser-profile resolver
         -> loopback CDP for the managed openclaw profile
           -> exact https://hey-traders.com/agent page
             -> private proof-of-possession login WebMCP tool
             -> public heytraders_cli WebMCP tool for normal commands
-            -> private public-intent WebMCP tool for Agent wallet connection
-              -> signed Vault-to-backend credential delivery
-                -> existing encrypted account credential installer
+            -> private exchange WebMCP tool
+              -> try an existing injected EVM browser wallet
+                -> existing HeyTraders Hyperliquid connection path
+              -> otherwise return creation guidance without calling the Vault
+      -> only for explicit walletAction=create
+        -> fixed internal Wallet Vault client
+          -> create/resume encrypted mainnet treasury
+          -> return only its public funding address until funded
+          -> signed Vault-to-backend credential delivery
+            -> existing encrypted account credential installer
 ```
 
 The transport does not evaluate arbitrary page JavaScript, read cookies or browser storage, call a public HeyTraders Agent API, or fall back to a shell command. It opens the exact `/agent` page, proves possession of its locally persisted private key, and receives only HttpOnly browser-session cookies. The private key never leaves the OpenClaw state directory.
 
-Model-facing arguments never accept credentials. For the exact Hyperliquid `exchange connect` command, the plugin accepts only `exchange: "hyperliquid"`. The separate Vault creates or resumes the Agent's mainnet treasury and returns only a public funding address. Once that address is funded, the browser creates a short-lived intent for the authenticated Agent `user_id`; the Vault validates the intent, rotates a fresh signer in one stable named Hyperliquid API-wallet slot, delivers that signer directly to the backend, and erases its local copy after encrypted storage succeeds. A later intent replaces the preceding named signer and securely removes stale failed-delivery ciphertext. The master key never enters the Gateway, model environment, browser DOM, or HeyTraders credential payload.
+Model-facing arguments never accept credentials. An exact Hyperliquid `exchange connect` accepts `exchange: "hyperliquid"` and the optional `walletAction` enum `existing | create`; omission means `existing`. The default path checks only for an EIP-1193 EVM wallet provider already injected into the exact Agent page. It does not inspect OpenClaw files, environment variables, secret stores, wallet references, or arbitrary wallet formats. If the provider is absent or incompatible, the result explains that limitation and proposes an explicit creation command without contacting the Vault.
+
+Only `walletAction: "create"` lets the separate Vault create or resume the Agent's mainnet treasury and return its public funding address. Once that address is funded, the browser creates a short-lived intent for the authenticated Agent `user_id`; the Vault validates the intent, rotates a fresh signer in one stable named Hyperliquid API-wallet slot, delivers that signer directly to the backend, and erases its local copy after encrypted storage succeeds. A later intent replaces the preceding named signer and securely removes stale failed-delivery ciphertext. The master key never enters the Gateway, model environment, browser DOM, or HeyTraders credential payload.
 
 ## Ownership boundaries
 
@@ -45,13 +51,14 @@ Model-facing arguments never accept credentials. For the exact Hyperliquid `exch
 | Command names, schemas, readiness, identifiers, and workflow policy | Live HeyTraders frontend catalogs and domain gateways |
 | Persistent Agent private key and origin-pinned WebMCP transport | This repository and the local OpenClaw state directory |
 | Agent `user_id`, sessions, plan tier, usage, and account ownership | HeyTraders backend using the existing `Users.id` boundary |
+| Existing compatible Hyperliquid wallet detection and connection | The exact Agent page and the existing HeyTraders browser-wallet connection service |
 | Hyperliquid mainnet master key and temporary approved API signer | The isolated Wallet Vault and its separate key/data volumes |
 | One-time Agent wallet intent and Vault proof verification | HeyTraders backend, bound to the existing Agent `user_id` |
 | Venue credential schema, encrypted storage, and runtime validation | Live HeyTraders application and broker services |
 
 ## Local Docker setup
 
-The Compose file uses the official OpenClaw `2026.8.2-browser` image pinned by digest. Gateway ports bind only to `127.0.0.1`; the Docker socket and host browser profiles are not mounted.
+The Compose file uses the official OpenClaw `2026.8.2-browser` image pinned by digest. Gateway ports bind only to `127.0.0.1`; the Docker socket and host browser profiles are not mounted. The local development proxy targets the Frontend on host port `5173` by default.
 
 Create an ignored local environment file:
 
@@ -97,15 +104,23 @@ docker compose restart openclaw-gateway
 
 `browser.noSandbox=true` is required by Chromium in this non-root Docker runtime. Container isolation remains enforced with dropped network capabilities, `no-new-privileges`, no Docker socket, no host browser data, and loopback-only host ports. The model-capable Gateway mounts only its persistent OpenClaw directories and the single read-only launcher script; the operator CLI mounts only the packed plugin artifact. Neither mounts the repository or an `.env.agent` file. Only the opt-in `plugin-dev` service mounts the checkout read-write.
 
-## Agent-owned Hyperliquid mainnet wallet
+## Hyperliquid existing-wallet-first flow
 
-The model invokes only the canonical selector:
+The model first invokes the canonical selector:
 
 ```json
 {"command":"exchange connect","args":{"exchange":"hyperliquid"}}
 ```
 
-On the first call, the Vault creates one mainnet-only treasury and returns its public address with `awaiting_funding`. The user funds that address through a supported Hyperliquid mainnet deposit or transfer flow, then asks the Agent to run the same command again. The second call checks funding, obtains a browser intent tied to the Agent account, rotates an API wallet in the treasury's stable named slot, stores the API signer through the existing encrypted HeyTraders account path, and returns `completed`. The Agent must then read `exchange credential_status` and `exchange status` before claiming readiness.
+That call uses a compatible EIP-1193 wallet already available in the Agent page when one exists. The integration does not impose a wallet storage format and does not claim to discover arbitrary wallets managed elsewhere. If no compatible provider is available, it returns public creation guidance and does not call the Wallet Vault.
+
+To explicitly create or resume an Agent-owned wallet, invoke:
+
+```json
+{"command":"exchange connect","args":{"exchange":"hyperliquid","walletAction":"create"}}
+```
+
+Only that explicit call lets the Vault create a mainnet-only treasury and return its public address with `awaiting_funding`. The user funds that address through a supported Hyperliquid mainnet deposit or transfer flow, then asks the Agent to run the same explicit command again. The next call checks funding, obtains a browser intent tied to the Agent account, rotates an API wallet in the treasury's stable named slot, stores the API signer through the existing encrypted HeyTraders account path, and returns `completed`. The Agent must then read `exchange credential_status` and `exchange status` before claiming readiness.
 
 The Vault intentionally has no private-key export, transfer, withdrawal, or order endpoint. Hyperliquid is mainnet-only in this integration; `testnet` and arbitrary network overrides are rejected before wallet creation. Other CEX and DEX venues continue through the live application handoff and are not given an environment-secret shortcut by this plugin.
 

@@ -1,4 +1,7 @@
-import type { HeyTradersRequest } from "./request-contract.js";
+import {
+  PublicResponseSafetyError,
+  assertNoSensitivePublicFields,
+} from "./public-response-safety.js";
 
 export const WALLET_VAULT_ORIGIN = "http://agent-wallet-vault:8091";
 export const HYPERLIQUID_WALLET_REF = "hyperliquid-main";
@@ -9,20 +12,6 @@ const PUBLIC_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const WALLET_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const ERROR_CODE_PATTERN = /^[A-Z0-9_]{1,64}$/u;
 const PUBLIC_STATES = new Set(["awaiting_funding", "ready", "completed"]);
-const UNSAFE_KEY_FRAGMENTS = [
-  "apikey",
-  "bearer",
-  "cookie",
-  "credential",
-  "mnemonic",
-  "password",
-  "private",
-  "recoveryphrase",
-  "secret",
-  "seed",
-  "signature",
-  "token",
-] as const;
 
 export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -70,24 +59,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function assertNoSensitiveFields(value: unknown, depth = 0): void {
-  if (depth > 16) {
-    throw new WalletVaultError("VAULT_RESPONSE_INVALID", "Wallet Vault response is too deeply nested.");
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) assertNoSensitiveFields(item, depth + 1);
-    return;
-  }
-  if (!isRecord(value)) return;
-  for (const [key, nested] of Object.entries(value)) {
-    const normalized = key.replace(/[^a-z0-9]/giu, "").toLowerCase();
-    if (UNSAFE_KEY_FRAGMENTS.some((fragment) => normalized.includes(fragment))) {
+function assertNoSensitiveFields(value: unknown): void {
+  try {
+    assertNoSensitivePublicFields(value);
+  } catch (error) {
+    if (error instanceof PublicResponseSafetyError) {
       throw new WalletVaultError(
-        "VAULT_RESPONSE_UNSAFE",
-        "Wallet Vault returned a credential-shaped field.",
+        error.reason === "sensitive-field" ? "VAULT_RESPONSE_UNSAFE" : "VAULT_RESPONSE_INVALID",
+        error.reason === "sensitive-field"
+          ? "Wallet Vault returned a credential-shaped field."
+          : "Wallet Vault response is too deeply nested.",
       );
     }
-    assertNoSensitiveFields(nested, depth + 1);
+    throw error;
   }
 }
 
@@ -289,19 +273,6 @@ export class WalletVaultClient {
   }
 }
 
-export function isHyperliquidConnectRequest(request: HeyTradersRequest): boolean {
-  if (request.command.trim().toLowerCase() !== "exchange connect") return false;
-  const keys = Object.keys(request.args);
-  if (keys.some((key) => key !== "exchange")) {
-    throw new WalletVaultError(
-      "INVALID_EXCHANGE_CONNECT_ARGS",
-      "exchange connect accepts only the canonical exchange selector.",
-    );
-  }
-  return typeof request.args.exchange === "string"
-    && request.args.exchange.trim().toLowerCase() === "hyperliquid";
-}
-
 export function parseAgentWalletIntent(value: unknown, requireChallenge: boolean): AgentWalletIntent {
   if (!isRecord(value) || value.ok !== true || !isRecord(value.data)) {
     throw new WalletVaultError("WALLET_INTENT_INVALID", "HeyTraders returned invalid wallet intent state.");
@@ -390,7 +361,11 @@ function connectionResult(wallet: WalletVaultPublicState): Record<string, unknow
       ...(!completed
         ? {
             nextAction:
-              "Fund this address with USDC on Hyperliquid mainnet, then run exchange connect again.",
+              "Fund this address with USDC on Hyperliquid mainnet, then run the same explicit walletAction create command again.",
+            nextCommand: {
+              command: "exchange connect",
+              args: { exchange: "hyperliquid", walletAction: "create" },
+            },
           }
         : { credentialStored: true, verificationRequired: true }),
     },
