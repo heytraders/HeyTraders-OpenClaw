@@ -119,6 +119,7 @@ export async function ensureAgentBrowserSession(params: {
   displayName: string;
   stateDir: string;
   invoke: AgentAuthInvoker;
+  prepareAuthentication?: () => Promise<void>;
 }): Promise<AgentSessionIdentity> {
   const status = readSuccessData(await params.invoke({ operation: "status" }));
   if (status.authenticated === true) {
@@ -130,6 +131,14 @@ export async function ensureAgentBrowserSession(params: {
       "HeyTraders returned an invalid Agent session status.",
     );
   }
+  if (status.authSource && status.authSource !== "agent_session") {
+    throw new AgentAuthenticationError(
+      "AGENT_BROWSER_SESSION_CONFLICT",
+      "The managed browser contains a human session; use a dedicated Agent browser profile.",
+    );
+  }
+
+  await params.prepareAuthentication?.();
 
   const identity = loadOrCreateAgentIdentity(params.stateDir);
   const challengeData = readSuccessData(

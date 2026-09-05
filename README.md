@@ -21,8 +21,8 @@ OpenClaw agent
     -> origin-pinned HeyTraders plugin
       -> create/resume the local Agent login identity
       -> resolve the existing managed OpenClaw browser profile
-      -> open the exact https://hey-traders.com/agent page
-      -> complete private proof-of-possession login
+      -> reuse the bound work tab (open /agent only when no app tab exists)
+      -> verify its Agent session; visit /agent only when signing is necessary
       -> forward every normal command to the page-owned heytraders_cli tool
 ```
 
@@ -87,7 +87,13 @@ docker compose run --rm openclaw-cli plugins install \
 
 Enable the browser plugin, this plugin, and the optional tool using the normal OpenClaw configuration. `browser.noSandbox=true` is required only by Chromium inside this development container; it is not a requirement imposed on external OpenClaw installations.
 
-The first tool invocation creates the exact Agent bootstrap tab automatically. Keep exactly one eligible `/agent` tab open. Agent login is automatic and independent of Google login, Link Agent, Codex OAuth, and the selected AI provider.
+The first invocation adopts one unambiguous HeyTraders page in the managed profile, or opens `/agent` if none exists. Later calls retain that target ID after navigation to dashboards or settings. The work tab need not stay on `/agent`. After Gateway restart, multiple app tabs are ambiguous until the operator leaves one intended work tab.
+
+Status revalidates the browser session on every app route; normal cookie refresh does not trigger signing. Only an unauthenticated session enters `/agent` for proof-of-possession, in the same tab, then returns to its prior registered route. A human session or a change from the initially bound Agent account stops dispatch. Initial session adoption uses the managed browser profile; it is not installation attestation or a comparison against the local key after Gateway restart. Agent login is independent of Google login, Link Agent, Codex OAuth, and the selected AI provider.
+
+Calls in one browser context are serialized. Caller cancellation does not release a dispatched operation ahead of its terminal response. If a connection is lost after dispatch and the outcome cannot be confirmed, later calls stop: inspect the last action in the managed browser before restarting the adapter. Never automatically replay a possibly completed action.
+
+Deploy the matching Frontend revision (private session status on all app routes and the `auth.agent` navigation route) before publishing/installing this transport. Do not work around an older Frontend with an alternate transport.
 
 ## Distribution boundary
 

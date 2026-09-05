@@ -355,7 +355,12 @@ export function invokeWebMcpTool(params: {
     const fail = (error: unknown): void =>
       settle(() =>
         reject(
-          error instanceof BrowserTransportError
+          invocationRequested
+            ? new BrowserTransportError(
+                "WEBMCP_OUTCOME_UNKNOWN",
+                "The browser command was dispatched but its final outcome could not be confirmed.",
+              )
+            : error instanceof BrowserTransportError
             ? error
             : new BrowserTransportError("WEBMCP_TRANSPORT_FAILED", "WebMCP transport failed.", true),
         ),
@@ -363,7 +368,7 @@ export function invokeWebMcpTool(params: {
     const finish = (responseParams: Record<string, unknown>): void => {
       try {
         const response = readToolResponse(responseParams);
-        settle(() => resolve(response));
+        settle(() => params.signal?.aborted ? reject(canceledCommand()) : resolve(response));
       } catch (error) {
         fail(error);
       }
@@ -375,8 +380,12 @@ export function invokeWebMcpTool(params: {
         JSON.stringify({ id: WEBMCP_ENABLE_REQUEST_ID, method: "WebMCP.enable" }),
       );
     };
-    const abortHandler = (): void =>
-      fail(new BrowserTransportError("WEBMCP_ABORTED", "HeyTraders command was canceled.", true));
+    const abortHandler = (): void => {
+      // Closing CDP does not cancel a page-owned command. Once dispatched, keep
+      // observing until its terminal response (or an explicit unknown outcome)
+      // so cancellation cannot release the browser queue ahead of the effect.
+      if (!invocationRequested) fail(canceledCommand());
+    };
     const timeoutHandle = setTimeout(
       () => fail(new BrowserTransportError("WEBMCP_TIMEOUT", "HeyTraders command timed out.", true)),
       params.timeoutMs,
@@ -672,19 +681,6 @@ function isAgentBootstrapTab(tab: BrowserTab, expectedOrigin: string): boolean {
   }
 }
 
-function selectAgentBootstrapTab(
-  tabs: BrowserTab[],
-  expectedOrigin: string,
-): BrowserTab | undefined {
-  const eligible = tabs.filter((tab) => isAgentBootstrapTab(tab, expectedOrigin));
-  if (eligible.length <= 1) return eligible[0];
-  throw new BrowserTransportError(
-    "AMBIGUOUS_AGENT_BOOTSTRAP_TAB",
-    "Multiple HeyTraders Agent bootstrap tabs are open; keep exactly one /agent tab open.",
-    true,
-  );
-}
-
 async function createAgentBootstrapTab(
   cdpHttpUrl: string,
   expectedOrigin: string,
@@ -747,7 +743,50 @@ async function createAgentBootstrapTab(
   }
 }
 
-async function ensureAgentBootstrapTab(
+type AgentBrowserContext = {
+  targetId?: string;
+  userId?: string;
+  agentId?: string;
+  outcomeUnconfirmed?: boolean;
+  pending: Promise<void>;
+};
+
+// Target IDs are browser-lifetime handles, not credentials. After a Gateway
+// restart we may adopt one unambiguous page and verify its session again.
+const agentBrowserContexts = new Map<string, AgentBrowserContext>();
+
+function canceledCommand(): BrowserTransportError {
+  return new BrowserTransportError("WEBMCP_ABORTED", "HeyTraders command was canceled.", true);
+}
+
+function withAgentBrowserContext<T>(
+  key: string,
+  signal: AbortSignal | undefined,
+  task: (context: AgentBrowserContext) => Promise<T>,
+): Promise<T> {
+  if (signal?.aborted) return Promise.reject(canceledCommand());
+  let context = agentBrowserContexts.get(key);
+  if (!context) {
+    context = { pending: Promise.resolve() };
+    agentBrowserContexts.set(key, context);
+  }
+  const current = context;
+  const result = current.pending.then(() => {
+    if (signal?.aborted) throw canceledCommand();
+    return task(current);
+  });
+  // Failure or cancellation never releases a later call ahead of an active one.
+  current.pending = result.then(() => undefined, () => undefined);
+  if (!signal) return result;
+  return new Promise<T>((resolve, reject) => {
+    const abort = (): void => reject(canceledCommand());
+    signal.addEventListener("abort", abort, { once: true });
+    result.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+async function ensureAgentWorkTab(
+  context: AgentBrowserContext,
   cdpHttpUrl: string,
   expectedOrigin: string,
   timeoutMs: number,
@@ -755,10 +794,23 @@ async function ensureAgentBootstrapTab(
   fetchFn: FetchLike,
 ): Promise<BrowserTab> {
   const tabs = await readBrowserTabs(cdpHttpUrl, timeoutMs, signal, fetchFn);
-  return (
-    selectAgentBootstrapTab(tabs, expectedOrigin) ??
-    createAgentBootstrapTab(cdpHttpUrl, expectedOrigin, timeoutMs, signal, fetchFn)
-  );
+  const boundTab = tabs.find((tab) => tab.targetId === context.targetId);
+  if (boundTab) {
+    if (!isExpectedHeyTradersTab(boundTab, expectedOrigin)) {
+      throw new BrowserTransportError(
+        "HEYTRADERS_ORIGIN_CHANGED",
+        "The Agent work tab left HeyTraders; return that tab to the configured origin before retrying.",
+        true,
+      );
+    }
+    return boundTab;
+  }
+  const eligible = tabs.filter((tab) => isExpectedHeyTradersTab(tab, expectedOrigin));
+  const tab = eligible.length > 0
+    ? selectHeyTradersTab(eligible, expectedOrigin)
+    : await createAgentBootstrapTab(cdpHttpUrl, expectedOrigin, timeoutMs, signal, fetchFn);
+  context.targetId = tab.targetId;
+  return tab;
 }
 
 async function invokeCompletedTool(params: {
@@ -822,36 +874,80 @@ export async function executeHeyTradersCommand(
   }
   const cdpHttpUrl = resolveManagedBrowserCdpUrl(runtimeConfig, browserProfile);
   const fetchFn = options.fetch ?? fetch;
-  const tab = await ensureAgentBootstrapTab(
-    cdpHttpUrl,
-    expectedOrigin,
-    timeoutMs,
-    options.signal,
-    fetchFn,
-  );
-  await ensureAgentBrowserSession({
-    appOrigin: expectedOrigin,
-    displayName,
-    stateDir: options.stateDir,
-    invoke: (input) =>
-      invokeCompletedTool({
-        tab,
-        expectedOrigin,
-        toolName: HEYTRADERS_AGENT_AUTH_TOOL_NAME,
-        input,
-        timeoutMs,
-        ...(options.signal ? { signal: options.signal } : {}),
-        ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
-      }),
-  });
-  return invokeCompletedTool({
-    tab,
-    expectedOrigin,
-    toolName: HEYTRADERS_TOOL_NAME,
-    input: normalizedRequest,
-    timeoutMs,
-    ...(options.signal ? { signal: options.signal } : {}),
-    ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
+  const stateDir = options.stateDir;
+  const contextKey = JSON.stringify([stateDir, cdpHttpUrl, expectedOrigin]);
+  return withAgentBrowserContext(contextKey, options.signal, async (context) => {
+    if (context.outcomeUnconfirmed) {
+      throw new BrowserTransportError(
+        "AGENT_BROWSER_OUTCOME_UNCONFIRMED",
+        "The previous command may still be running. Verify its outcome in the managed browser before restarting the adapter; do not replay it automatically.",
+      );
+    }
+    const tab = await ensureAgentWorkTab(
+      context, cdpHttpUrl, expectedOrigin, timeoutMs, options.signal, fetchFn,
+    );
+    const invoke = async (
+      toolName: typeof HEYTRADERS_TOOL_NAME | typeof HEYTRADERS_AGENT_AUTH_TOOL_NAME,
+      input: unknown,
+    ): Promise<unknown> => {
+      try {
+        return await invokeCompletedTool({
+          tab, expectedOrigin, toolName, input, timeoutMs,
+          ...(options.signal ? { signal: options.signal } : {}),
+          ...(options.createWebSocket ? { createWebSocket: options.createWebSocket } : {}),
+        });
+      } catch (error) {
+        if (error instanceof BrowserTransportError && error.code === "WEBMCP_OUTCOME_UNKNOWN") {
+          context.outcomeUnconfirmed = true;
+        }
+        throw error;
+      }
+    };
+    const navigate = async (target: string): Promise<void> => {
+      const destination = new URL(target, expectedOrigin);
+      assertExpectedMainFrameOrigin(destination.href, expectedOrigin);
+      const result = await invoke(HEYTRADERS_TOOL_NAME, {
+        command: "nav",
+        args: { target: `${destination.pathname}${destination.search}${destination.hash}`, replace: true },
+      });
+      if (!isRecord(result) || result.ok !== true || !isRecord(result.data)
+        || result.data.locationMatched !== true || !isRecord(result.data.location)
+        || result.data.location.pathname !== destination.pathname
+        || (result.data.location.search || "") !== destination.search
+        || (result.data.location.hash || "") !== destination.hash) {
+        throw new BrowserTransportError(
+          "AGENT_AUTH_NAVIGATION_FAILED",
+          "Could not navigate the Agent work tab through the registered HeyTraders route contract.",
+          true,
+        );
+      }
+      tab.url = destination.href;
+    };
+    let returnUrl: string | undefined;
+    const session = await ensureAgentBrowserSession({
+      appOrigin: expectedOrigin,
+      displayName,
+      stateDir,
+      invoke: (input) => invoke(HEYTRADERS_AGENT_AUTH_TOOL_NAME, input),
+      prepareAuthentication: async () => {
+        if (isAgentBootstrapTab(tab, expectedOrigin)) return;
+        returnUrl = tab.url;
+        await navigate(AGENT_BOOTSTRAP_PATH);
+      },
+    });
+    if ((context.userId && context.userId !== session.userId)
+      || (context.agentId && context.agentId !== session.agentId)) {
+      throw new BrowserTransportError(
+        "AGENT_BROWSER_SESSION_CHANGED",
+        "The browser session changed to another Agent account; the requested command was not dispatched.",
+      );
+    }
+    context.userId = session.userId;
+    context.agentId = session.agentId;
+    if (returnUrl) await navigate(returnUrl);
+    // Once dispatched, never replay a command after a transport/auth error:
+    // the application may already have performed its state-changing effect.
+    return invoke(HEYTRADERS_TOOL_NAME, normalizedRequest);
   });
 }
 

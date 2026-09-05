@@ -11,13 +11,19 @@ This repository is a thin OpenClaw adapter for the live HeyTraders browser comma
 - Accepts one bounded `{ command, args }` request.
 - Rejects credential-shaped argument names and unsafe JSON structures.
 - Resolves only a local OpenClaw-managed browser profile.
-- Pins the configured HeyTraders origin and exact `/agent` bootstrap path.
+- Pins the configured HeyTraders origin and work-tab target ID, independent of its current route.
 - Establishes the Agent-owned HeyTraders browser session.
 - Forwards every normal request unchanged to the page-defined `heytraders_cli` WebMCP tool.
 
 ### Agent authentication
 
 The plugin persists a local Ed25519 identity under the OpenClaw state directory. The page returns an origin- and client-bound challenge; the plugin signs it and receives an HttpOnly Agent browser session. This key represents the Agent's HeyTraders login only. It is never an exchange wallet, API key, or trading signer.
+
+The private auth tool exposes status on all routes; challenge and completion remain restricted to `/agent`. Status uses AuthService to revalidate shared cookies and updates the page-local authStore only when identity/expiry changes. Local state alone can miss a cross-tab account switch. Normal refresh remains owned by AuthService.
+
+Only an unauthenticated status triggers canonical `nav` to `/agent`, signing, and restoration of the prior registered path/query/fragment in the same tab. Failed navigation stops dispatch. The original command is forwarded once. Human sessions and changes from the Agent ID initially observed in the running context are rejected; initial adoption after Gateway restart is not a local-key ownership check.
+
+Browser operations are serialized. Caller cancellation after dispatch keeps the queue occupied until the terminal WebMCP response. An unknown outcome blocks further dispatch until the operator reconciles the last action and restarts the adapter. No automatic replay is inferred from an error.
 
 ### Live HeyTraders application
 

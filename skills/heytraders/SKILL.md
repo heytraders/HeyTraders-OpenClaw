@@ -10,7 +10,7 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 
 ## Operating loop
 
-1. Use `status` when browser readiness is uncertain. The plugin opens the exact `/agent` page and creates or resumes its Agent-owned HeyTraders browser session before forwarding the requested command.
+1. Use `status` when browser readiness is uncertain. The plugin reuses its HeyTraders work tab and Agent session. It opens `/agent` only when no app tab exists and visits that route for signing only when a session must be established.
 2. Discover only what the current request needs:
    - `help` lists current domains.
    - `help <domain>` lists that domain's current commands.
@@ -56,9 +56,12 @@ Do not send `walletAction`, `network`, `walletRef`, connection secrets, or walle
 
 ## Browser transport recovery
 
-The adapter accepts exactly one eligible `/agent` page at its configured HeyTraders origin in the managed OpenClaw browser profile.
+The adapter binds one work tab at its configured HeyTraders origin in the managed OpenClaw browser profile. It retains that tab across navigation; it need not remain on `/agent`.
 
 - If no eligible tab exists, let the next call create it. If the browser profile is stopped, start that existing profile first.
-- If multiple eligible tabs exist, keep one intended `/agent` tab and close the duplicates before retrying.
+- Before a work tab is bound (including after Gateway restart), multiple eligible app tabs are ambiguous. Ask the operator to identify the intended tab and resolve the ambiguity; do not pick another account's tab.
+- Normal session refresh is automatic. If signing is needed, the adapter temporarily visits `/agent` in the same tab and restores the prior registered route before the requested command.
+- A human session or change from the bound Agent account is an error, not permission to overwrite that session.
+- If a dispatched command's outcome is unconfirmed, stop and have the operator inspect the action before restarting the adapter. Never replay the action or restart merely to bypass this guard.
 - If automatic authentication fails, preserve the structured Agent-auth error. Do not redirect to human login or fall back to an API-key/Link Agent flow.
 - If the live page does not expose `heytraders_cli`, report the transport error rather than guessing a legacy path.

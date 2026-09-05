@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   BrowserTransportError,
@@ -12,6 +16,7 @@ import {
   selectHeyTradersTab,
   type WebSocketFactory,
   type WebSocketLike,
+  type BrowserTab,
 } from "./browser-transport.js";
 
 const canonicalTab = {
@@ -181,6 +186,8 @@ type FakeWebSocketOptions = {
   respond?: boolean;
   responseOutput?: unknown;
   responseStatus?: "Completed" | "Canceled" | "Error";
+  onInvoke?: (input: unknown, toolName: string) => unknown;
+  deferResponse?: (input: unknown, toolName: string, respond: () => void) => void;
 };
 
 class FakeWebSocket implements WebSocketLike {
@@ -200,7 +207,7 @@ class FakeWebSocket implements WebSocketLike {
     const request = JSON.parse(data) as {
       id: number;
       method: string;
-      params?: { input?: unknown };
+      params?: { input?: unknown; toolName?: string };
     };
     this.sent.push(request);
 
@@ -256,13 +263,15 @@ class FakeWebSocket implements WebSocketLike {
         this.emitMessage({
           method: "WebMCP.toolsAdded",
           params: {
-            tools: [
+            tools: (this.options.advertisedToolName === "*"
+              ? ["heytraders_cli", "heytraders_agent_auth"]
+              : [this.options.advertisedToolName ?? "heytraders_cli"]).map((name) => (
               {
-                name: this.options.advertisedToolName ?? "heytraders_cli",
+                name,
                 frameId: this.options.advertisedFrameId ?? canonicalTab.targetId,
                 inputSchema: { type: "object" },
-              },
-            ],
+              }
+            )),
           },
         });
       });
@@ -276,7 +285,7 @@ class FakeWebSocket implements WebSocketLike {
         return;
       }
       if (this.options.respond === false) return;
-      queueMicrotask(() => {
+      const respond = (): void => {
         this.emitMessage({ id: request.id, result: { invocationId: "INVOCATION-1" } });
         this.emitMessage({
           method: "WebMCP.toolResponded",
@@ -284,12 +293,18 @@ class FakeWebSocket implements WebSocketLike {
             invocationId: "INVOCATION-1",
             status: this.options.responseStatus ?? "Completed",
             output:
+              this.options.onInvoke?.(request.params?.input, String(request.params?.toolName)) ??
               this.options.responseOutput ??
               { content: [{ type: "text", text: '{"ok":true,"data":{"ready":true}}' }] },
             ...(this.options.errorText ? { errorText: this.options.errorText } : {}),
           },
         });
-      });
+      };
+      if (this.options.deferResponse) {
+        this.options.deferResponse(request.params?.input, String(request.params?.toolName), respond);
+      } else {
+        queueMicrotask(respond);
+      }
     }
   }
 
@@ -497,7 +512,252 @@ describe("invokeHeyTradersWebMcpTool", () => {
         timeoutMs: 1_000,
         createWebSocket,
       }),
-    ).rejects.toMatchObject({ code: "WEBMCP_SOCKET_CLOSED", retryable: true });
+    ).rejects.toMatchObject({ code: "WEBMCP_OUTCOME_UNKNOWN", retryable: false });
+  });
+});
+
+const temporaryStateDirectories: string[] = [];
+afterEach(() => {
+  for (const directory of temporaryStateDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+function workTabHarness(initialUrl = "https://hey-traders.com/agent") {
+  const stateDir = mkdtempSync(join(tmpdir(), "heytraders-work-tab-"));
+  temporaryStateDirectories.push(stateDir);
+  const state = {
+    tabs: [{ ...canonicalTab, url: initialUrl }] as BrowserTab[],
+    authenticated: true,
+    humanSession: false,
+    userId: "7d50b461-5031-4f25-b70f-89ec7f6bd6d1",
+    agentId: "16e3c6cb-a999-4acc-ae27-a80a730b91a8",
+    createdTabs: 0,
+    authChecks: 0,
+    rejectCommand: false,
+    rejectNavigation: false,
+    deferNextCommand: false,
+    deferred: [] as Array<() => void>,
+    commands: [] as Array<{ targetId: string; url: string; input: Record<string, unknown> }>,
+  };
+  const runtimeConfig = {
+    gateway: { port: 18_789 },
+    browser: { enabled: true, profiles: { openclaw: { cdpPort: 18_800 } } },
+  };
+  const options = {
+    stateDir,
+    fetch: vi.fn(async (input: string | URL) => {
+      if (String(input).includes("/json/new?")) {
+        state.createdTabs += 1;
+        const targetId = `NEW-${state.createdTabs}`;
+        const tab = {
+          ...canonicalTab, targetId,
+          url: "https://hey-traders.com/agent",
+          wsUrl: `ws://127.0.0.1:18800/devtools/page/${targetId}`,
+        };
+        state.tabs.push(tab);
+        return Response.json(tab);
+      }
+      return Response.json(state.tabs);
+    }),
+    createWebSocket: vi.fn((url: string) => {
+      const tab = state.tabs.find((candidate) => candidate.wsUrl === url);
+      if (!tab) throw new Error("Selected tab is absent");
+      const socket = new FakeWebSocket({
+        advertisedToolName: "*",
+        mainFrameUrl: tab.url,
+        deferResponse: (_input, toolName, respond) => {
+          if (toolName === "heytraders_cli" && state.deferNextCommand) {
+            state.deferNextCommand = false;
+            state.deferred.push(respond);
+          } else {
+            queueMicrotask(respond);
+          }
+        },
+        onInvoke: (rawInput, toolName) => {
+          const input = rawInput as Record<string, unknown>;
+          if (toolName === "heytraders_agent_auth") {
+            if (input.operation === "status") {
+              state.authChecks += 1;
+              return { ok: true, data: {
+                authenticated: state.authenticated && !state.humanSession,
+                ...(state.humanSession ? { authSource: "supabase" } : {}),
+                ...(state.authenticated ? { userId: state.userId, agentId: state.agentId } : {}),
+              } };
+            }
+            expect(new URL(tab.url).pathname).toBe("/agent");
+            if (input.operation === "challenge") {
+              const fingerprint = createHash("sha256")
+                .update(Buffer.from(String(input.publicKey), "base64url")).digest("base64url");
+              return { ok: true, data: {
+                challenge_id: "4d2e32c4-0936-429b-a15f-b11df48d3920",
+                challenge: ["heytraders-agent-browser-auth-v1", "origin:https://hey-traders.com",
+                  `key:${fingerprint}`, `client:${String(input.clientInstanceId)}`,
+                  `nonce:${Buffer.alloc(32, 7).toString("base64url")}`].join("\n"),
+                expires_at: Math.floor(Date.now() / 1000) + 120,
+                algorithm: "Ed25519",
+              } };
+            }
+            state.authenticated = true;
+            return { ok: true, data: { userId: state.userId, agentId: state.agentId, created: false } };
+          }
+          state.commands.push({ targetId: tab.targetId, url: tab.url, input });
+          if (input.command === "nav") {
+            if (state.rejectNavigation) return { ok: false, error: "navigation-runtime-not-ready" };
+            tab.url = new URL(String((input.args as Record<string, unknown>).target), tab.url).href;
+            const { pathname, search, hash } = new URL(tab.url);
+            return { ok: true, data: { locationMatched: true, location: { pathname, search, hash } } };
+          }
+          return state.rejectCommand
+            ? { ok: false, error: "authentication-required" }
+            : { ok: true, data: { state: "user-action-required" } };
+        },
+      });
+      queueMicrotask(() => socket.open());
+      return socket;
+    }),
+  };
+  return {
+    state, options,
+    call: (request: unknown, signal?: AbortSignal) => executeHeyTradersCommand(
+      request, { timeoutMs: 1_000 }, runtimeConfig, { ...options, ...(signal ? { signal } : {}) },
+    ),
+  };
+}
+
+describe("Agent work-tab lifecycle", () => {
+  it("keeps the same work tab after navigation and ignores unrelated bootstrap tabs", async () => {
+    const h = workTabHarness();
+    await h.call({ command: "nav", args: { target: "/dashboard/settings/exchanges" } });
+    h.state.tabs.push({ ...canonicalTab, targetId: "UNRELATED", url: "https://hey-traders.com/agent",
+      wsUrl: "ws://127.0.0.1:18800/devtools/page/UNRELATED" });
+    await h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } });
+    expect(h.state.createdTabs).toBe(0);
+    expect(h.state.commands.at(-1)).toMatchObject({ targetId: "TARGET-1",
+      url: "https://hey-traders.com/dashboard/settings/exchanges" });
+  });
+
+  it("resumes an existing authenticated dashboard without opening /agent", async () => {
+    const h = workTabHarness("https://hey-traders.com/dashboard/settings/exchanges");
+    await h.call({ command: "status" });
+    expect(h.state.createdTabs).toBe(0);
+    expect(h.state.commands[0].targetId).toBe("TARGET-1");
+  });
+
+  it("serializes simultaneous calls before choosing or creating a work tab", async () => {
+    const h = workTabHarness();
+    h.state.tabs = [];
+    await Promise.all([
+      h.call({ command: "nav", args: { target: "/dashboard/settings/exchanges" } }),
+      h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }),
+    ]);
+    expect(h.state.createdTabs).toBe(1);
+    expect(h.state.commands.at(-1)?.url).toBe("https://hey-traders.com/dashboard/settings/exchanges");
+  });
+
+  it("rejects ambiguity before adopting a work tab", async () => {
+    const h = workTabHarness();
+    h.state.tabs.push({ ...canonicalTab, targetId: "OTHER" });
+    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "AMBIGUOUS_HEYTRADERS_TAB" });
+    expect(h.options.createWebSocket).not.toHaveBeenCalled();
+  });
+
+  it("fails closed if its bound tab leaves the allowed origin", async () => {
+    const h = workTabHarness();
+    await h.call({ command: "status" });
+    h.state.tabs[0].url = "https://example.com/";
+    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "HEYTRADERS_ORIGIN_CHANGED" });
+    expect(h.state.createdTabs).toBe(0);
+  });
+
+  it("replaces a closed tab only when no other eligible tab is open", async () => {
+    const h = workTabHarness();
+    await h.call({ command: "status" });
+    h.state.tabs = [];
+    await h.call({ command: "status" });
+    expect(h.state.createdTabs).toBe(1);
+    expect(h.state.commands.at(-1)?.targetId).toBe("NEW-1");
+  });
+
+  it("reauthenticates in the same tab and restores the full work route before dispatch", async () => {
+    const workUrl = "https://hey-traders.com/dashboard/settings/exchanges?view=all#connections";
+    const h = workTabHarness(workUrl);
+    h.state.authenticated = false;
+    await h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } });
+    expect(h.state.createdTabs).toBe(0);
+    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["nav", "nav", "exchange connect"]);
+    expect(h.state.commands.at(-1)).toMatchObject({ targetId: "TARGET-1", url: workUrl });
+  });
+
+  it("does not replace a human session with an Agent session", async () => {
+    const h = workTabHarness();
+    h.state.humanSession = true;
+    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CONFLICT" });
+    expect(h.state.commands).toEqual([]);
+  });
+
+  it("rejects an account switch in the bound browser session", async () => {
+    const h = workTabHarness();
+    await h.call({ command: "status" });
+    h.state.agentId = "a1391cdf-8a74-4f9b-8eea-1b59baf23e6a";
+    await expect(h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }))
+      .rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CHANGED" });
+    expect(h.state.commands).toHaveLength(1);
+  });
+
+  it("never retries a command that the application already received", async () => {
+    const h = workTabHarness();
+    h.state.rejectCommand = true;
+    await expect(h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }))
+      .resolves.toEqual({ ok: false, error: "authentication-required" });
+    expect(h.state.commands).toHaveLength(1);
+  });
+
+  it("does not start a canceled call and allows the following call to proceed", async () => {
+    const h = workTabHarness();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(h.call({ command: "status" }, controller.signal))
+      .rejects.toMatchObject({ code: "WEBMCP_ABORTED" });
+    expect(h.options.fetch).not.toHaveBeenCalled();
+    await h.call({ command: "status" });
+    expect(h.state.commands).toHaveLength(1);
+  });
+
+  it("holds the browser queue after caller cancellation until the dispatched command finishes", async () => {
+    const h = workTabHarness();
+    h.state.deferNextCommand = true;
+    const controller = new AbortController();
+    const first = h.call({ command: "nav", args: { target: "/dashboard/settings/exchanges" } }, controller.signal);
+    await vi.waitFor(() => expect(h.state.deferred).toHaveLength(1));
+    const canceled = expect(first).rejects.toMatchObject({ code: "WEBMCP_ABORTED" });
+    controller.abort();
+    await canceled;
+    const second = h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h.state.authChecks).toBe(1);
+    expect(h.state.commands).toEqual([]);
+    h.state.deferred.shift()?.();
+    await second;
+    expect(h.state.commands.at(-1)?.url).toBe("https://hey-traders.com/dashboard/settings/exchanges");
+  });
+
+  it("blocks later dispatch when a dispatched command times out without a terminal result", async () => {
+    const h = workTabHarness();
+    h.state.deferNextCommand = true;
+    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "WEBMCP_OUTCOME_UNKNOWN" });
+    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_OUTCOME_UNCONFIRMED" });
+    expect(h.state.authChecks).toBe(1);
+  });
+
+  it("does not authenticate or dispatch the requested command after failed recovery navigation", async () => {
+    const h = workTabHarness("https://hey-traders.com/dashboard/settings/exchanges");
+    h.state.authenticated = false;
+    h.state.rejectNavigation = true;
+    await expect(h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }))
+      .rejects.toMatchObject({ code: "AGENT_AUTH_NAVIGATION_FAILED" });
+    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["nav"]);
+    expect(h.state.authenticated).toBe(false);
   });
 });
 
