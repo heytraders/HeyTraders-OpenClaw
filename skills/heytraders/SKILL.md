@@ -8,6 +8,17 @@ user-invocable: false
 
 Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders OpenClaw plugin. The live HeyTraders page owns command names, schemas, identifiers, onboarding documents, readiness, policy, and results. Never replace that authority with remembered commands, copied schemas, or guessed venue instructions.
 
+## Required plugin
+
+This skill is bundled with `@heytraders/openclaw-plugin`. Installing the standalone ClawHub skill does not install the browser transport. If `heytraders_cli` is unavailable, ask the operator to install and enable the plugin and allow its optional tool:
+
+```bash
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.0
+openclaw plugins enable heytraders
+```
+
+The operator must add `heytraders_cli` to their existing tool allowance and have a running managed OpenClaw browser profile. Follow the [package installation guide](https://github.com/heytraders/HeyTraders-OpenClaw/blob/develop/README.md#install-in-an-existing-openclaw-environment) for the supported OpenClaw/Node versions and configuration. Preserve existing tool policy: append to `tools.allow` when it is configured, otherwise use `tools.alsoAllow`; never configure both. Do not install software or change the operator's environment without their authorization. No Docker, Vault, or HeyTraders wallet service is required. If the plugin is already installed, do not install this skill a second time.
+
 ## Operating loop
 
 1. Use `status` when browser readiness is uncertain. The plugin reuses its HeyTraders work tab and Agent session. It opens `/agent` only when no app tab exists and visits that route for signing only when a session must be established.

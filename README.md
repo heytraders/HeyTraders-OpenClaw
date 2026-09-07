@@ -2,7 +2,42 @@
 
 OpenClaw integration for operating [HeyTraders](https://hey-traders.com/) through the application's live browser command catalog.
 
-> Status: the plugin and bundled skill are implemented for local validation. The command guidance is published separately on ClawHub as [`@heytraders/heytraders`](https://clawhub.ai/heytraders/skills/heytraders); the plugin has not been published to npm or as a GitHub release.
+> OpenClaw package: `@heytraders/openclaw-plugin` (version `0.1.0`). The plugin includes the HeyTraders Quant Trading Skills guidance. The separate [ClawHub skill](https://clawhub.ai/heytraders/skills/heytraders) is an entry point to the same guidance, not a replacement for the plugin.
+
+## Install in an existing OpenClaw environment
+
+Requires OpenClaw `>=2026.8.2 <2027`, a Node.js release supported by that OpenClaw version (and meeting this plugin's minimum `22.22.3`), a configured AI provider with tool support, and an available managed OpenClaw browser profile. No Docker container, Vault, exchange wallet, or particular AI-provider subscription is installed or required by this package.
+
+```bash
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.0
+openclaw plugins enable heytraders
+```
+
+The tool is optional. Preserve your existing tool policy and entries:
+
+- If `tools.allow` is already configured, append `heytraders_cli` to that array.
+- Otherwise, append it to `tools.alsoAllow` (or create that array).
+- Do not configure both `tools.allow` and `tools.alsoAllow`; OpenClaw rejects that combination. Existing deny policies still apply.
+
+For a configuration without `tools.allow`, merge this example into the existing configuration:
+
+```json
+{
+  "tools": {
+    "alsoAllow": ["heytraders_cli"]
+  }
+}
+```
+
+Reload or restart your Gateway using the method already used in your environment. Start the existing managed browser profile when needed:
+
+```bash
+openclaw browser start --browser-profile openclaw
+```
+
+The default browser profile is `openclaw` and the default application origin is `https://hey-traders.com`. If your managed profile has another name, set `plugins.entries.heytraders.config.browserProfile` to that existing profile. Do not import a person's browser cookies or exchange secrets.
+
+Ask your Agent to invoke `heytraders_cli` with `status`, discover `help auth`, and run the live `auth status` command. Success means the response reports an authenticated, verified Agent session; merely opening the page is not proof. The Agent's HeyTraders account is created or resumed automatically without Google login. Installing the plugin already provides the bundled skill, so a second skill installation is unnecessary.
 
 ## What ships here
 
