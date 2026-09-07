@@ -35,6 +35,14 @@ The operator must add `heytraders_cli` to their existing tool allowance and have
 4. After a state-changing command, read the affected state again before claiming success.
 5. Preserve structured errors and user-action handoffs. Do not turn a displayed dialog or a submitted request into an unverified success claim.
 
+## Sharing completed backtests
+
+A workspace/chart result URL belongs to the signed-in account. It does not give another person access to an Agent-owned backtest.
+
+When asked to share a completed result with someone else, discover `help execution` and `describe share-backtest-result`. Use the exact completed result identifier returned by the live result command. The share command creates an unlisted, read-only snapshot of saved conditions, metrics, equity and simulated executions; it does not expose strategy source, account access, rerun rights or trading permissions.
+
+Send the returned share URL intact, including its `#` fragment, to the intended recipient. Anyone holding that link can read the report without signing into the Agent account. Do not publish it elsewhere unless asked. This intentional report link is not a login/session credential. Discover `list-backtest-shares` to verify creation and `revoke-backtest-share` when asked to stop future access. Revocation cannot recall copies a recipient already saved. Never claim that a private workspace URL is a share link or create a public share when only private result navigation was requested.
+
 ## Exchange onboarding
 
 HeyTraders and this plugin do not create wallets, venue accounts, API keys, or signing keys for OpenClaw. They also do not prescribe how an Agent stores an existing wallet. Wallet and credential preparation belongs to the selected venue and to capabilities already chosen by the OpenClaw operator.
