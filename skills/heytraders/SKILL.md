@@ -13,11 +13,11 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 This skill is bundled with `@heytraders/openclaw-plugin`. Installing the standalone ClawHub skill does not install the browser transport. If `heytraders_cli` is unavailable, ask the operator to install and enable the plugin and allow its optional tool:
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.0
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.1
 openclaw plugins enable heytraders
 ```
 
-The operator must add `heytraders_cli` to their existing tool allowance and have a running managed OpenClaw browser profile. Follow the [package installation guide](https://github.com/heytraders/HeyTraders-OpenClaw/blob/develop/README.md#install-in-an-existing-openclaw-environment) for the supported OpenClaw/Node versions and configuration. Preserve existing tool policy: append to `tools.allow` when it is configured, otherwise use `tools.alsoAllow`; never configure both. Do not install software or change the operator's environment without their authorization. No Docker, Vault, or HeyTraders wallet service is required. If the plugin is already installed, do not install this skill a second time.
+The operator must add `heytraders_cli` to their existing tool allowance and have a running managed OpenClaw browser profile. Follow the [package installation guide](https://github.com/heytraders/HeyTraders-OpenClaw/blob/develop/README.md#install-in-an-existing-openclaw-environment) for the supported OpenClaw/Node versions and configuration. Preserve existing tool policy: append to `tools.allow` when it is configured, otherwise use `tools.alsoAllow`; never configure both. Do not install software or change the operator's environment without their authorization. If the plugin is already installed, do not install this skill a second time.
 
 ## Operating loop
 
@@ -37,7 +37,7 @@ The operator must add `heytraders_cli` to their existing tool allowance and have
 
 ## Exchange onboarding
 
-HeyTraders and this plugin do not create wallets, venue accounts, API keys, signing keys, or a local wallet/Vault service for OpenClaw. They also do not prescribe how an Agent stores an existing wallet. Wallet and credential preparation belongs to the selected venue and to capabilities already chosen by the OpenClaw operator.
+HeyTraders and this plugin do not create wallets, venue accounts, API keys, or signing keys for OpenClaw. They also do not prescribe how an Agent stores an existing wallet. Wallet and credential preparation belongs to the selected venue and to capabilities already chosen by the OpenClaw operator.
 
 For every exchange connection:
 
@@ -55,7 +55,7 @@ For every exchange connection:
 7. If the result requires user or venue action, explain that exact step and stop the HeyTraders command flow until it is completed. Never claim to have approved a wallet request or entered credentials unless the responsible external capability returned its own verified result.
 8. After completion, run `exchange status`. When an account identifier is returned or needed, use `exchange connections` followed by `exchange credential_status` before claiming the connection is ready.
 
-Do not send `walletAction`, `network`, `walletRef`, connection secrets, or wallet material. There is no HeyTraders Agent-wallet creation fallback.
+Pass only arguments declared by the live command schema. Never include connection secrets or wallet material.
 
 ## Safety and ownership
 

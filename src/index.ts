@@ -14,7 +14,7 @@ const configSchema = Type.Object(
         minLength: 1,
         maxLength: 256,
         description:
-          "Exact HeyTraders app origin. Defaults to production; HTTP is accepted only for loopback or host.docker.internal development.",
+          "HeyTraders application origin. Defaults to https://hey-traders.com.",
       }),
     ),
     agentDisplayName: Type.Optional(

@@ -2,7 +2,7 @@
   "id": "heytraders",
   "name": "HeyTraders",
   "description": "Operate the live HeyTraders browser command catalog through an origin-pinned WebMCP adapter.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -10,7 +10,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 256,
-        "description": "Exact HeyTraders app origin. Defaults to production; HTTP is accepted only for loopback or host.docker.internal development."
+        "description": "HeyTraders application origin. Defaults to https://hey-traders.com."
       },
       "agentDisplayName": {
         "type": "string",

@@ -1,6 +1,6 @@
 {
   "name": "@heytraders/openclaw-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Origin-pinned OpenClaw tool plugin for the live HeyTraders browser command catalog.",
   "type": "module",
   "private": true,
