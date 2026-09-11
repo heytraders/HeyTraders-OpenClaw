@@ -45,4 +45,18 @@ describe("production release documentation", () => {
       "README.md",
     ]);
   });
+
+  it("separates Agent research navigation from operator-facing backtest sharing", () => {
+    const skill = read("skills/heytraders/SKILL.md");
+
+    expect(skill).toMatch(
+      /`navigation\.result\.href` and `dashboardUrl` as the Agent account's authenticated workspace locations/i,
+    );
+    expect(skill).toMatch(
+      /Whenever you report a completed strategy's backtest performance to the OpenClaw operator[\s\S]*`share-backtest-result`/i,
+    );
+    expect(skill).toMatch(
+      /include the returned `url` intact[\s\S]*Do not send `navigation\.result\.href` or `dashboardUrl` as the operator's result link/i,
+    );
+  });
 });

@@ -13,7 +13,7 @@ The plugin includes the `heytraders_cli` tool and its usage skill. You do not ne
 ## Install in an existing OpenClaw environment
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.1
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.2
 openclaw plugins enable heytraders
 ```
 
@@ -64,6 +64,12 @@ Requests use one structured `heytraders_cli` envelope:
 ```
 
 The Agent must verify the resulting application state after making a change. Available commands do not override your authorization, subscription limits, exchange permissions, or required confirmations.
+
+## Backtest results
+
+The Agent uses its authenticated HeyTraders workspace result URL to inspect executions, continue research, and refine a strategy. That workspace URL belongs to the Agent account and is not the result link sent to you.
+
+When the Agent reports completed backtest performance, the bundled skill tells it to create an unlisted read-only result share through the live command catalog and include that returned share URL with the metrics. The share does not grant access to strategy source, the Agent account, reruns, or trading.
 
 ## Connecting an exchange
 

@@ -2,7 +2,7 @@
   "id": "heytraders",
   "name": "HeyTraders",
   "description": "Operate the live HeyTraders browser command catalog through an origin-pinned WebMCP adapter.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "configSchema": {
     "type": "object",
     "properties": {

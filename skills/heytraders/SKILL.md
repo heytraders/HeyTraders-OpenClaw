@@ -13,7 +13,7 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 This skill is bundled with `@heytraders/openclaw-plugin`. Installing the standalone ClawHub skill does not install the browser transport. If `heytraders_cli` is unavailable, ask the operator to install and enable the plugin and allow its optional tool:
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.1
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.2
 openclaw plugins enable heytraders
 ```
 
@@ -37,11 +37,11 @@ The operator must add `heytraders_cli` to their existing tool allowance and have
 
 ## Sharing completed backtests
 
-A workspace/chart result URL belongs to the signed-in account. It does not give another person access to an Agent-owned backtest.
+After a completed backtest, treat `navigation.result.href` and `dashboardUrl` as the Agent account's authenticated workspace locations. Use them to open the result, inspect its simulated executions, continue research, and refine the strategy inside the Agent's own HeyTraders session. They are not operator-facing share links.
 
-When asked to share a completed result with someone else, discover `help execution` and `describe share-backtest-result`. Use the exact completed result identifier returned by the live result command. The share command creates an unlisted, read-only snapshot of saved conditions, metrics, equity and simulated executions; it does not expose strategy source, account access, rerun rights or trading permissions.
+Whenever you report a completed strategy's backtest performance to the OpenClaw operator, first discover `help execution` and `describe share-backtest-result`, then call `share-backtest-result` with the exact completed `resultId` returned by the live result command. Do this even when the operator asked to run or evaluate the strategy without separately saying "share"; the operator cannot use the Agent account's authenticated workspace URL. The share command creates an unlisted, read-only snapshot of saved conditions, metrics, equity and simulated executions; it does not expose strategy source, account access, rerun rights or trading permissions.
 
-Send the returned share URL intact, including its `#` fragment, to the intended recipient. Anyone holding that link can read the report without signing into the Agent account. Do not publish it elsewhere unless asked. This intentional report link is not a login/session credential. Discover `list-backtest-shares` to verify creation and `revoke-backtest-share` when asked to stop future access. Revocation cannot recall copies a recipient already saved. Never claim that a private workspace URL is a share link or create a public share when only private result navigation was requested.
+Include the returned `url` intact, including its `#` fragment, with the performance summary. Do not send `navigation.result.href` or `dashboardUrl` as the operator's result link. Anyone holding the share URL can read the report without signing into the Agent account, so do not publish it elsewhere unless asked. This intentional report link is not a login/session credential. If the Agent is only researching privately and is not yet reporting completed performance, keep using the authenticated workspace URL and do not create a share merely for its own navigation. Discover `list-backtest-shares` to verify creation and `revoke-backtest-share` when asked to stop future access. Revocation cannot recall copies a recipient already saved.
 
 ## Exchange onboarding
 
