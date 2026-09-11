@@ -13,7 +13,7 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 This skill is bundled with `@heytraders/openclaw-plugin`. Installing the standalone ClawHub skill does not install the browser transport. If `heytraders_cli` is unavailable, ask the operator to install and enable the plugin and allow its optional tool:
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.2
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.3
 openclaw plugins enable heytraders
 ```
 

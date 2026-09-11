@@ -16,7 +16,7 @@ x-openclaw-cli-volumes: &openclaw-cli-volumes
   - ${OPENCLAW_WORKSPACE_DIR:-./.openclaw-docker/workspace}:/home/node/.openclaw/workspace
   - ${OPENCLAW_AUTH_PROFILE_SECRET_DIR:-./.openclaw-docker/auth-profile-secrets}:/home/node/.config/openclaw
   - ${OPENCLAW_CACHE_DIR:-./.openclaw-docker/cache}:/home/node/.cache/openclaw-1000
-  - ./heytraders-openclaw-plugin-0.1.2.tgz:/workspace/HeyTraders-OpenClaw/heytraders-openclaw-plugin-0.1.2.tgz:ro
+  - ./heytraders-openclaw-plugin-0.1.3.tgz:/workspace/HeyTraders-OpenClaw/heytraders-openclaw-plugin-0.1.3.tgz:ro
 
 services:
   openclaw-gateway:
