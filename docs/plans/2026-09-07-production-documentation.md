@@ -22,7 +22,7 @@ Create src/package-release.test.ts. Check public README/SKILL and configuration 
 
 ## Task 3: Verify and publish
 
-Run the complete verify script with the pinned plugin-dev image, pack the exact archive, compare all archive members with current build/source and assert only the fourteen intended files ship. Run ClawHub validation and a read-only release review. Commit/push the scoped changes on develop, then dry-run and publish 0.1.1 using the exact committed source metadata. Preserve existing versions and catalog ownership.
+Run the complete verify script with the pinned plugin-dev image, pack the exact archive, compare all archive members with current build/source and assert only the fourteen intended files ship. Run ClawHub validation and a read-only release review. Commit/push the scoped changes on `main`, then dry-run and publish 0.1.1 using the exact committed source metadata. Preserve existing versions and catalog ownership.
 
 ## Task 4: Verify the actual distribution
 

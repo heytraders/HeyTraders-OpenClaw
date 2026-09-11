@@ -1,6 +1,6 @@
 # OpenClaw Docker Adapter Implementation Plan
 
-> **For Claude:** Execute this plan sequentially in the current `develop` working tree. Project rules prohibit worktrees, so preserve unrelated changes and keep commits scoped.
+> **For Claude:** Execute this plan sequentially in the current `main` working tree. Project rules prohibit worktrees, so preserve unrelated changes and keep commits scoped.
 
 **Goal:** Run OpenClaw `2026.8.2` in a local Docker environment and deliver the smallest verified HeyTraders tool plugin that can safely reach the live browser command facade, without exposing credentials or duplicating the command catalog.
 
@@ -204,6 +204,6 @@ Run unit tests, type checking, plugin build/validate, `npm pack --dry-run`, arch
 
 Clearly separate package proof, Docker runtime proof, browser transport proof, authenticated HeyTraders proof, and publication state.
 
-**Step 3: Commit on `develop`**
+**Step 3: Commit on `main`**
 
 Stage only this repository's scoped files and commit after all implemented gates pass. Do not publish to npm or ClawHub and do not create a GitHub release.

@@ -79,4 +79,4 @@
 2. Run `git diff --check` in every changed repository.
 3. Verify OpenClaw tests/build/package, Frontend targeted checks, and Backend targeted tests.
 4. Update `.codex/orchestration/memory.md` with the guide-only ownership decision.
-5. Commit each repository on `develop` with scoped messages.
+5. Commit OpenClaw on its sole `main` branch; commit other repositories according to each repository's branch policy, with scoped messages.

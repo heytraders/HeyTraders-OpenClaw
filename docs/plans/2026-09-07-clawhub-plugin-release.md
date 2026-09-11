@@ -30,7 +30,7 @@ Files: `README.md`, `skills/heytraders/SKILL.md`, existing manifests (only if va
 2. Run `docker compose --profile dev run --rm --no-deps plugin-dev pack --silent`.
 3. Inspect every packed filename and compare archive bytes to expected built/source files; reject secrets, symlinks, development files, or unexpected modules.
 4. Run the current ClawHub package validator and exact publication dry run.
-5. Obtain a bounded read-only release review, resolve any actionable blocker, and commit/push release source on develop.
+5. Obtain a bounded read-only release review, resolve any actionable blocker, and commit/push release source on `main`.
 
 ## Task 3: Publish and verify
 

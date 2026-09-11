@@ -33,7 +33,7 @@ Files: `README.md`, `docs/architecture.md`, `skills/heytraders/SKILL.md`.
 
 1. Remove the instruction to remain on `/agent`; document target continuity, session recovery, and ambiguity handling.
 2. Run OpenClaw `verify`, pack to a fresh temporary output directory, inspect the exact tarball, and check for secret/runtime files.
-3. Review only scoped diffs and commit them on develop. Do not push or publish.
+3. Review only scoped diffs and commit them on `main`. Do not push or publish.
 
 ## Task 4 — Backend proposal only
 
