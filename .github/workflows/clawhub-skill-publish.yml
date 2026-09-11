@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: develop
+          ref: main
 
       - name: Configure ClawHub authentication
         if: ${{ !inputs.dry_run }}
@@ -80,7 +80,7 @@ jobs:
             --categories integrations,automation,finance
             --source-repo heytraders/HeyTraders-OpenClaw
             --source-commit "$source_commit"
-            --source-ref develop
+            --source-ref main
             --source-path skills/heytraders
             --json
           )

@@ -54,7 +54,7 @@
 **Files:**
 - No additional source files expected.
 
-1. Commit scoped Frontend and OpenClaw changes on `develop` and push both repositories.
+1. Commit the scoped Frontend changes on `develop`, and commit OpenClaw changes on its sole `main` branch; push both repositories.
 2. Release Frontend through the canonical `develop` to `main` PR, review the complete release diff, merge it, and verify the production command catalog no longer publishes ordinary result response guidance.
 3. Publish the new `@heytraders/openclaw-plugin` patch release from the exact committed source and wait for definitive ClawHub checks.
 4. Publish the next standalone `HeyTraders Quant Trading Skills` patch from the same committed skill source.

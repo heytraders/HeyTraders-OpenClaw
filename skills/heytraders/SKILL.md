@@ -13,11 +13,11 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 This skill is bundled with `@heytraders/openclaw-plugin`. Installing the standalone ClawHub skill does not install the browser transport. If `heytraders_cli` is unavailable, ask the operator to install and enable the plugin and allow its optional tool:
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.3
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.4
 openclaw plugins enable heytraders
 ```
 
-The operator must add `heytraders_cli` to their existing tool allowance and have a running managed OpenClaw browser profile. Follow the [package installation guide](https://github.com/heytraders/HeyTraders-OpenClaw/blob/develop/README.md#install-in-an-existing-openclaw-environment) for the supported OpenClaw/Node versions and configuration. Preserve existing tool policy: append to `tools.allow` when it is configured, otherwise use `tools.alsoAllow`; never configure both. Do not install software or change the operator's environment without their authorization. If the plugin is already installed, do not install this skill a second time.
+The operator must add `heytraders_cli` to their existing tool allowance and have a running managed OpenClaw browser profile. Follow the [package installation guide](https://github.com/heytraders/HeyTraders-OpenClaw/blob/main/README.md#install-in-an-existing-openclaw-environment) for the supported OpenClaw/Node versions and configuration. Preserve existing tool policy: append to `tools.allow` when it is configured, otherwise use `tools.alsoAllow`; never configure both. Do not install software or change the operator's environment without their authorization. If the plugin is already installed, do not install this skill a second time.
 
 ## Operating loop
 

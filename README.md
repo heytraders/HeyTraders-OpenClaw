@@ -13,7 +13,7 @@ The plugin includes the `heytraders_cli` tool and its usage skill. You do not ne
 ## Install in an existing OpenClaw environment
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.3
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.4
 openclaw plugins enable heytraders
 ```
 
