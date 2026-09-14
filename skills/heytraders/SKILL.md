@@ -69,7 +69,7 @@ Pass only arguments declared by the live command schema. Never include connectio
 
 - The plugin stores only its Ed25519 HeyTraders login identity in the OpenClaw state directory. That identity authenticates the Agent account; it is not an exchange wallet or trading credential.
 - Agent login does not require Google login, a Link Agent code, Codex OAuth, or a human browser handoff. The selected AI provider is independent of the HeyTraders Agent identity.
-- Do not call a HeyTraders HTTP API, shell command, page script, undocumented bridge member, or fallback transport to bypass `heytraders_cli`.
+- Do not call a HeyTraders HTTP API, shell command, page script, documented or undocumented bridge member, or fallback transport to bypass `heytraders_cli`. The plugin owns its fixed browser transport.
 - Do not bypass confirmations, authorization, subscription limits, exchange permissions, or application policy. A discoverable command is not permission to perform an unrequested financial action.
 - Treat orders, strategy starts, wallet approvals, credential creation, deposits, and other irreversible actions as separate operations with their own explicit authority.
 
@@ -83,4 +83,4 @@ The adapter binds one work tab at its configured HeyTraders origin in the manage
 - A human session or change from the bound Agent account is an error, not permission to overwrite that session.
 - If a dispatched command's outcome is unconfirmed, stop and have the operator inspect the action before restarting the adapter. Never replay the action or restart merely to bypass this guard.
 - If automatic authentication fails, preserve the structured Agent-auth error. Do not redirect to human login or fall back to an API-key/Link Agent flow.
-- If the live page does not expose `heytraders_cli`, report the transport error rather than guessing a legacy path.
+- If the live page does not expose the required versioned bridge capability, report the transport error rather than guessing a legacy path.

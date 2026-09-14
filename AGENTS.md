@@ -10,7 +10,7 @@ This repository owns the OpenClaw-specific browser adapter, plugin packaging, Ag
 - Keep `help`, `help <domain>`, and `describe <command>` as discovery primitives; do not copy the live catalog into plugin code.
 - Register one structured `heytraders_cli` tool. Do not create one OpenClaw tool per command or an exchange-specific hidden tool.
 - Keep the adapter restricted to the exact production origin `https://hey-traders.com` by default.
-- Use only the generic request facade. Do not call individual bridge members or add a page-evaluation, direct HTTP API, shell CLI, or legacy fallback.
+- Use only the versioned page bridge's generic `request` member and its fixed private `agentAuth` member. OpenClaw may invoke those two members through the bundled constant CDP evaluation program; never accept model-authored JavaScript or model-selected members, and do not add any other bridge member, direct HTTP API, shell CLI, or legacy fallback.
 - Never read, accept, log, or persist exchange credentials, wallet secrets, cookies, tokens, local storage, or session storage in model-facing code.
 - Agent login is automatic proof-of-possession and is independent of exchange wallet custody.
 - HeyTraders does not create wallets or venue credentials for OpenClaw. Exchange onboarding must read `exchange list` and the revisioned `exchange guide`, then use the existing secure browser connection surface.

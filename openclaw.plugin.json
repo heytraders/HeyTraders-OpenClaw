@@ -1,7 +1,7 @@
 {
   "id": "heytraders",
   "name": "HeyTraders",
-  "description": "Operate the live HeyTraders browser command catalog through an origin-pinned WebMCP adapter.",
+  "description": "Operate the live HeyTraders browser command catalog through its origin-pinned page bridge.",
   "version": "0.1.4",
   "configSchema": {
     "type": "object",

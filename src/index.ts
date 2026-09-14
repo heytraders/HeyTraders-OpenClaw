@@ -62,7 +62,7 @@ const requestSchema = Type.Object(
 export default defineToolPlugin({
   id: "heytraders",
   name: "HeyTraders",
-  description: "Operate the live HeyTraders browser command catalog through an origin-pinned WebMCP adapter.",
+  description: "Operate the live HeyTraders browser command catalog through its origin-pinned page bridge.",
   configSchema,
   tools: (tool) => [
     tool({

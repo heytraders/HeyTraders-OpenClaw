@@ -46,6 +46,15 @@ describe("production release documentation", () => {
     ]);
   });
 
+  it("ships the fixed direct page-bridge transport without WebMCP protocol calls", () => {
+    const transport = read("src/browser-transport.ts");
+
+    expect(transport).toContain('method: "Runtime.evaluate"');
+    expect(transport).toContain("window.__bridge");
+    expect(transport).toContain('value !== "request" && value !== "agentAuth"');
+    expect(transport).not.toMatch(/WebMCP\./);
+  });
+
   it("separates Agent research navigation from operator-facing backtest sharing", () => {
     const skill = read("skills/heytraders/SKILL.md");
 

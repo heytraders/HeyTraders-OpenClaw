@@ -30,7 +30,7 @@ Enable the browser plugin, this plugin and its optional tool through normal Open
 
 The pinned image's `/home/node/.cache` is root-owned. The Compose harness supplies a writable `XDG_CACHE_HOME`; isolated image tests must likewise use a writable temporary cache instead of mounting the operator's state.
 
-The browser transport defaults to the exact production origin. Explicit local testing can use a loopback or `host.docker.internal` HTTP origin through `appOrigin`; do not suggest that override in customer installation instructions.
+The browser transport defaults to the exact production origin. Explicit local testing can use a loopback or `host.docker.internal` HTTP origin through `appOrigin`; do not suggest that override in customer installation instructions. With the included TCP proxy enabled, configure `appOrigin` as `http://127.0.0.1:5173`; that container-local origin forwards to the host Frontend at `http://localhost:5173`.
 
 ## Transport architecture
 
@@ -42,7 +42,7 @@ OpenClaw Agent
       -> resolve the existing managed browser profile
       -> reuse the bound work tab
       -> verify its Agent session; visit /agent only when signing is necessary
-      -> forward commands through the page-owned request facade
+      -> invoke only facade-v6 request/agentAuth through fixed CDP evaluation
 ```
 
 The first invocation adopts one unambiguous HeyTraders tab or opens `/agent` if none exists. Subsequent calls retain the same target across registered routes. After Gateway restart, multiple eligible tabs are ambiguous until the operator chooses the intended work tab.
@@ -51,7 +51,12 @@ Session status is checked on every app route. Cookie refresh does not trigger si
 
 Calls are serialized per browser context. Caller cancellation does not release a dispatched operation ahead of its terminal response. If dispatch becomes uncertain, subsequent commands stop; inspect the action before restarting the adapter and never automatically replay it.
 
-There is no exchange-specific interceptor, wallet runtime, second transport, arbitrary page evaluation, browser storage reader, direct HeyTraders HTTP client, or shell fallback. The plugin's Ed25519 login identity is never used as an exchange wallet.
+There is no exchange-specific interceptor, wallet runtime, second transport,
+model-controlled page evaluation, browser storage reader, direct HeyTraders
+HTTP client, or shell fallback. The only evaluated program is bundled with the
+plugin, validates the exact page origin and facade version, decodes a base64 JSON
+payload, and selects one of two fixed members. The plugin's Ed25519 login identity
+is never used as an exchange wallet.
 
 ## Responsibility boundaries
 

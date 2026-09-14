@@ -2,16 +2,15 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   BrowserTransportError,
   assertSafeCdpHttpUrl,
   assertSafeCdpWebSocketUrl,
-  decodeHeyTradersOutput,
   executeHeyTradersCommand,
   formatErrorForLog,
-  invokeHeyTradersWebMcpTool,
   parseBrowserTabs,
   selectHeyTradersTab,
   type WebSocketFactory,
@@ -111,60 +110,15 @@ describe("assertSafeCdpWebSocketUrl", () => {
   });
 });
 
-describe("decodeHeyTradersOutput", () => {
-  it("decodes the canonical single text JSON response", () => {
-    expect(
-      decodeHeyTradersOutput({ content: [{ type: "text", text: '{"ok":true,"data":{"ready":true}}' }] }),
-    ).toEqual({ ok: true, data: { ready: true } });
-  });
-
-  it("preserves a non-canonical WebMCP response", () => {
-    const output = { content: [{ type: "image", data: "not-returned-by-heytraders" }] };
-    expect(decodeHeyTradersOutput(output)).toBe(output);
-  });
-
-  it("does not execute or coerce invalid text", () => {
-    const output = { content: [{ type: "text", text: "not-json" }] };
-    expect(decodeHeyTradersOutput(output)).toBe(output);
-  });
-
-  it("preserves a structured application error", () => {
-    const error = {
-      ok: false,
-      error: { code: "NOT_READY", message: "The requested gateway is not ready." },
-    };
-    expect(
-      decodeHeyTradersOutput({
-        content: [{ type: "text", text: JSON.stringify(error) }],
-      }),
-    ).toEqual(error);
-  });
-
-  it("preserves a visible user-action handoff", () => {
-    const handoff = {
-      ok: false,
-      userActionRequired: {
-        kind: "login",
-        message: "Complete login in the visible HeyTraders browser.",
-      },
-    };
-    expect(
-      decodeHeyTradersOutput({
-        content: [{ type: "text", text: JSON.stringify(handoff) }],
-      }),
-    ).toEqual(handoff);
-  });
-});
-
 describe("formatErrorForLog", () => {
   it("logs only the fixed error type and code", () => {
     const error = new BrowserTransportError(
-      "WEBMCP_PROTOCOL_ERROR",
+      "PAGE_BRIDGE_PROTOCOL_ERROR",
       "Bearer short-secret from ws://127.0.0.1:18800/devtools/page/private",
     );
 
     expect(formatErrorForLog(error)).toBe(
-      "BrowserTransportError [WEBMCP_PROTOCOL_ERROR]",
+      "BrowserTransportError [PAGE_BRIDGE_PROTOCOL_ERROR]",
     );
   });
 
@@ -176,23 +130,25 @@ describe("formatErrorForLog", () => {
 });
 
 type FakeWebSocketOptions = {
-  advertisedFrameId?: string;
-  advertisedToolName?: string;
   bootstrapFromAboutBlank?: boolean;
+  bridgeMembers?: Array<"request" | "agentAuth">;
+  bridgeVersion?: number;
   closeBeforeResponse?: boolean;
-  errorText?: string;
   mainFrameUrl?: string;
   navigateAfterFrameTree?: boolean;
   respond?: boolean;
-  responseOutput?: unknown;
-  responseStatus?: "Completed" | "Canceled" | "Error";
-  onInvoke?: (input: unknown, toolName: string) => unknown;
-  deferResponse?: (input: unknown, toolName: string, respond: () => void) => void;
+  onInvoke?: (input: unknown, member: "request" | "agentAuth") => unknown;
+  deferResponse?: (
+    input: unknown,
+    member: "request" | "agentAuth",
+    respond: () => void,
+  ) => void;
 };
 
 class FakeWebSocket implements WebSocketLike {
   readonly sent: Array<Record<string, unknown>> = [];
   readonly invocationInput: Array<unknown> = [];
+  readonly invocationMembers: Array<"request" | "agentAuth"> = [];
   private readonly listeners = new Map<string, Array<(event: Event | MessageEvent) => void>>();
 
   constructor(private readonly options: FakeWebSocketOptions = {}) {}
@@ -207,7 +163,7 @@ class FakeWebSocket implements WebSocketLike {
     const request = JSON.parse(data) as {
       id: number;
       method: string;
-      params?: { input?: unknown; toolName?: string };
+      params?: { expression?: string; awaitPromise?: boolean; returnByValue?: boolean };
     };
     this.sent.push(request);
 
@@ -257,54 +213,56 @@ class FakeWebSocket implements WebSocketLike {
       return;
     }
 
-    if (request.method === "WebMCP.enable") {
-      queueMicrotask(() => {
-        this.emitMessage({ id: request.id, result: {} });
-        this.emitMessage({
-          method: "WebMCP.toolsAdded",
-          params: {
-            tools: (this.options.advertisedToolName === "*"
-              ? ["heytraders_cli", "heytraders_agent_auth"]
-              : [this.options.advertisedToolName ?? "heytraders_cli"]).map((name) => (
-              {
-                name,
-                frameId: this.options.advertisedFrameId ?? canonicalTab.targetId,
-                inputSchema: { type: "object" },
-              }
-            )),
+    if (request.method === "Runtime.evaluate") {
+      expect(request.params?.awaitPromise).toBe(true);
+      expect(request.params?.returnByValue).toBe(true);
+      expect(typeof request.params?.expression).toBe("string");
+      const members = this.options.bridgeMembers ?? ["request", "agentAuth"];
+      const bridge: Record<string, unknown> = { version: this.options.bridgeVersion ?? 6 };
+      for (const member of members) {
+        bridge[member] = (input: unknown): unknown => {
+          this.invocationInput.push(input);
+          this.invocationMembers.push(member);
+          return this.options.onInvoke?.(input, member) ?? { ok: true, data: { ready: true } };
+        };
+      }
+      const origin = new URL(this.options.mainFrameUrl ?? canonicalTab.url).origin;
+      const evaluated = runInNewContext(String(request.params?.expression), {
+        atob,
+        Reflect,
+        setTimeout,
+        TextDecoder,
+        Uint8Array,
+        window: { location: { origin }, __bridge: bridge },
+      }) as Promise<unknown>;
+      void Promise.resolve(evaluated).then((value) => {
+        if (this.options.closeBeforeResponse) {
+          this.close();
+          return;
+        }
+        if (this.options.respond === false) return;
+        const respond = (): void => this.emitMessage({
+          id: request.id,
+          result: {
+            result: {
+              type: "object",
+              value: JSON.parse(JSON.stringify(value)) as unknown,
+            },
           },
+        });
+        const input = this.invocationInput.at(-1);
+        const member = this.invocationMembers.at(-1);
+        if (this.options.deferResponse && member) {
+          this.options.deferResponse(input, member, respond);
+        } else {
+          queueMicrotask(respond);
+        }
+      }, () => {
+        this.emitMessage({
+          id: request.id,
+          result: { exceptionDetails: { text: "page bridge evaluation failed" } },
         });
       });
-      return;
-    }
-
-    if (request.method === "WebMCP.invokeTool") {
-      this.invocationInput.push(request.params?.input);
-      if (this.options.closeBeforeResponse) {
-        queueMicrotask(() => this.close());
-        return;
-      }
-      if (this.options.respond === false) return;
-      const respond = (): void => {
-        this.emitMessage({ id: request.id, result: { invocationId: "INVOCATION-1" } });
-        this.emitMessage({
-          method: "WebMCP.toolResponded",
-          params: {
-            invocationId: "INVOCATION-1",
-            status: this.options.responseStatus ?? "Completed",
-            output:
-              this.options.onInvoke?.(request.params?.input, String(request.params?.toolName)) ??
-              this.options.responseOutput ??
-              { content: [{ type: "text", text: '{"ok":true,"data":{"ready":true}}' }] },
-            ...(this.options.errorText ? { errorText: this.options.errorText } : {}),
-          },
-        });
-      };
-      if (this.options.deferResponse) {
-        this.options.deferResponse(request.params?.input, String(request.params?.toolName), respond);
-      } else {
-        queueMicrotask(respond);
-      }
     }
   }
 
@@ -326,195 +284,6 @@ class FakeWebSocket implements WebSocketLike {
     }
   }
 }
-
-describe("invokeHeyTradersWebMcpTool", () => {
-  it("binds WebMCP invocation to the canonical top-level frame", async () => {
-    const socket = new FakeWebSocket();
-    const createWebSocket: WebSocketFactory = vi.fn(() => {
-      queueMicrotask(() => socket.open());
-      return socket;
-    });
-
-    await expect(
-      invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "help", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      }),
-    ).resolves.toEqual({
-      status: "Completed",
-      output: { content: [{ type: "text", text: '{"ok":true,"data":{"ready":true}}' }] },
-    });
-
-    expect(socket.sent.map((request) => request.method)).toEqual([
-      "Page.enable",
-      "Page.getFrameTree",
-      "WebMCP.enable",
-      "WebMCP.invokeTool",
-    ]);
-    expect(socket.invocationInput).toEqual([{ command: "help", args: {} }]);
-  });
-
-  it("waits for a newly-created about:blank tab to reach HeyTraders", async () => {
-    const socket = new FakeWebSocket({ bootstrapFromAboutBlank: true });
-    const createWebSocket: WebSocketFactory = vi.fn(() => {
-      queueMicrotask(() => socket.open());
-      return socket;
-    });
-
-    await expect(
-      invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "status", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      }),
-    ).resolves.toMatchObject({ status: "Completed" });
-
-    expect(socket.sent.map((request) => request.method)).toEqual([
-      "Page.enable",
-      "Page.getFrameTree",
-      "WebMCP.enable",
-      "WebMCP.invokeTool",
-    ]);
-  });
-
-  it("preserves a structured WebMCP error status", async () => {
-    const socket = new FakeWebSocket({
-      responseStatus: "Error",
-      errorText: "HeyTraders rejected the command.",
-    });
-    const createWebSocket: WebSocketFactory = () => {
-      queueMicrotask(() => socket.open());
-      return socket;
-    };
-
-    await expect(
-      invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "status", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      }),
-    ).resolves.toEqual({
-      status: "Error",
-      errorText: "HeyTraders rejected the command.",
-      output: { content: [{ type: "text", text: '{"ok":true,"data":{"ready":true}}' }] },
-    });
-  });
-
-  it("fails closed when the page does not advertise the HeyTraders facade", async () => {
-    vi.useFakeTimers();
-    try {
-      const socket = new FakeWebSocket({ advertisedToolName: "unrelated_tool" });
-      const createWebSocket: WebSocketFactory = () => {
-        queueMicrotask(() => socket.open());
-        return socket;
-      };
-      const invocation = invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "help", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      });
-      const rejection = expect(invocation).rejects.toMatchObject({ code: "WEBMCP_TIMEOUT" });
-
-      await vi.runAllTimersAsync();
-      await rejection;
-      expect(socket.sent.map((request) => request.method)).toEqual([
-        "Page.enable",
-        "Page.getFrameTree",
-        "WebMCP.enable",
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not invoke a same-name tool registered by a child frame", async () => {
-    vi.useFakeTimers();
-    try {
-      const socket = new FakeWebSocket({ advertisedFrameId: "CHILD-FRAME" });
-      const createWebSocket: WebSocketFactory = () => {
-        queueMicrotask(() => socket.open());
-        return socket;
-      };
-      const invocation = invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "help", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      });
-      const rejection = expect(invocation).rejects.toMatchObject({ code: "WEBMCP_TIMEOUT" });
-
-      await vi.runAllTimersAsync();
-      await rejection;
-      expect(socket.invocationInput).toEqual([]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("rejects a main frame that moved off the canonical origin", async () => {
-    const socket = new FakeWebSocket({ mainFrameUrl: "https://example.com/" });
-    const createWebSocket: WebSocketFactory = () => {
-      queueMicrotask(() => socket.open());
-      return socket;
-    };
-
-    await expect(
-      invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "help", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      }),
-    ).rejects.toMatchObject({ code: "HEYTRADERS_ORIGIN_CHANGED", retryable: true });
-  });
-
-  it("rejects top-level navigation after frame binding", async () => {
-    const socket = new FakeWebSocket({ navigateAfterFrameTree: true });
-    const createWebSocket: WebSocketFactory = () => {
-      queueMicrotask(() => socket.open());
-      return socket;
-    };
-
-    await expect(
-      invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "help", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      }),
-    ).rejects.toMatchObject({ code: "HEYTRADERS_TAB_NAVIGATED", retryable: true });
-  });
-
-  it("fails when the selected tab closes before responding", async () => {
-    const socket = new FakeWebSocket({ closeBeforeResponse: true });
-    const createWebSocket: WebSocketFactory = () => {
-      queueMicrotask(() => socket.open());
-      return socket;
-    };
-
-    await expect(
-      invokeHeyTradersWebMcpTool({
-        wsUrl: canonicalTab.wsUrl,
-        targetId: canonicalTab.targetId,
-        input: { command: "help", args: {} },
-        timeoutMs: 1_000,
-        createWebSocket,
-      }),
-    ).rejects.toMatchObject({ code: "WEBMCP_OUTCOME_UNKNOWN", retryable: false });
-  });
-});
 
 const temporaryStateDirectories: string[] = [];
 afterEach(() => {
@@ -564,19 +333,18 @@ function workTabHarness(initialUrl = "https://hey-traders.com/agent") {
       const tab = state.tabs.find((candidate) => candidate.wsUrl === url);
       if (!tab) throw new Error("Selected tab is absent");
       const socket = new FakeWebSocket({
-        advertisedToolName: "*",
         mainFrameUrl: tab.url,
-        deferResponse: (_input, toolName, respond) => {
-          if (toolName === "heytraders_cli" && state.deferNextCommand) {
+        deferResponse: (_input, member, respond) => {
+          if (member === "request" && state.deferNextCommand) {
             state.deferNextCommand = false;
             state.deferred.push(respond);
           } else {
             queueMicrotask(respond);
           }
         },
-        onInvoke: (rawInput, toolName) => {
+        onInvoke: (rawInput, member) => {
           const input = rawInput as Record<string, unknown>;
-          if (toolName === "heytraders_agent_auth") {
+          if (member === "agentAuth") {
             if (input.operation === "status") {
               state.authChecks += 1;
               return { ok: true, data: {
@@ -718,7 +486,7 @@ describe("Agent work-tab lifecycle", () => {
     const controller = new AbortController();
     controller.abort();
     await expect(h.call({ command: "status" }, controller.signal))
-      .rejects.toMatchObject({ code: "WEBMCP_ABORTED" });
+      .rejects.toMatchObject({ code: "PAGE_BRIDGE_ABORTED" });
     expect(h.options.fetch).not.toHaveBeenCalled();
     await h.call({ command: "status" });
     expect(h.state.commands).toHaveLength(1);
@@ -730,13 +498,13 @@ describe("Agent work-tab lifecycle", () => {
     const controller = new AbortController();
     const first = h.call({ command: "nav", args: { target: "/dashboard/settings/exchanges" } }, controller.signal);
     await vi.waitFor(() => expect(h.state.deferred).toHaveLength(1));
-    const canceled = expect(first).rejects.toMatchObject({ code: "WEBMCP_ABORTED" });
+    const canceled = expect(first).rejects.toMatchObject({ code: "PAGE_BRIDGE_ABORTED" });
     controller.abort();
     await canceled;
     const second = h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } });
     await new Promise((resolve) => setImmediate(resolve));
     expect(h.state.authChecks).toBe(1);
-    expect(h.state.commands).toEqual([]);
+    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["nav"]);
     h.state.deferred.shift()?.();
     await second;
     expect(h.state.commands.at(-1)?.url).toBe("https://hey-traders.com/dashboard/settings/exchanges");
@@ -745,7 +513,7 @@ describe("Agent work-tab lifecycle", () => {
   it("blocks later dispatch when a dispatched command times out without a terminal result", async () => {
     const h = workTabHarness();
     h.state.deferNextCommand = true;
-    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "WEBMCP_OUTCOME_UNKNOWN" });
+    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "PAGE_BRIDGE_OUTCOME_UNKNOWN" });
     await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_OUTCOME_UNCONFIRMED" });
     expect(h.state.authChecks).toBe(1);
   });
@@ -762,45 +530,29 @@ describe("Agent work-tab lifecycle", () => {
 });
 
 describe("executeHeyTradersCommand", () => {
-  it("forwards exchange connect unchanged to the canonical browser command tool", async () => {
+  it("forwards exchange connect unchanged to the versioned page bridge", async () => {
     const authSocket = new FakeWebSocket({
-      advertisedToolName: "heytraders_agent_auth",
-      responseOutput: {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              ok: true,
-              data: {
-                authenticated: true,
-                userId: "7d50b461-5031-4f25-b70f-89ec7f6bd6d1",
-                agentId: "16e3c6cb-a999-4acc-ae27-a80a730b91a8",
-              },
-            }),
-          },
-        ],
-      },
+      onInvoke: () => ({
+        ok: true,
+        data: {
+          authenticated: true,
+          userId: "7d50b461-5031-4f25-b70f-89ec7f6bd6d1",
+          agentId: "16e3c6cb-a999-4acc-ae27-a80a730b91a8",
+        },
+      }),
     });
     const commandSocket = new FakeWebSocket({
-      advertisedToolName: "heytraders_cli",
-      responseOutput: {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              ok: true,
-              domain: "exchange",
-              action: "connect",
-              data: { state: "user-action-required" },
-            }),
-          },
-        ],
-      },
+      onInvoke: () => ({
+        ok: true,
+        domain: "exchange",
+        action: "connect",
+        data: { state: "user-action-required" },
+      }),
     });
     const sockets = [authSocket, commandSocket];
     const createWebSocket: WebSocketFactory = () => {
       const socket = sockets.shift();
-      if (!socket) throw new Error("unexpected WebMCP invocation");
+      if (!socket) throw new Error("unexpected page bridge invocation");
       queueMicrotask(() => socket.open());
       return socket;
     };
@@ -833,8 +585,10 @@ describe("executeHeyTradersCommand", () => {
     });
 
     expect(authSocket.invocationInput).toEqual([{ operation: "status" }]);
+    expect(authSocket.invocationMembers).toEqual(["agentAuth"]);
     expect(commandSocket.invocationInput).toEqual([
       { command: "exchange connect", args: { exchange: "hyperliquid" } },
     ]);
+    expect(commandSocket.invocationMembers).toEqual(["request"]);
   });
 });
