@@ -37,6 +37,12 @@ describe("production release documentation", () => {
     }
   });
 
+  it("aligns the optional development harness archive mount with its install instructions", () => {
+    const archive = `heytraders-openclaw-plugin-${pkg.version}.tgz`;
+    expect(read("docker-compose.yml")).toContain(`./${archive}:/workspace/HeyTraders-OpenClaw/${archive}:ro`);
+    expect(read("docs/development.md")).toContain(`npm-pack:/workspace/HeyTraders-OpenClaw/${archive}`);
+  });
+
   it("excludes contributor documentation and the local harness from the package allowlist", () => {
     expect(pkg.files).toEqual([
       "dist",
@@ -53,6 +59,14 @@ describe("production release documentation", () => {
     expect(transport).toContain("window.__bridge");
     expect(transport).toContain('value !== "request" && value !== "agentAuth"');
     expect(transport).not.toMatch(/WebMCP\./);
+  });
+
+  it("explains recovery when a long-lived work tab still runs the previous page bridge", () => {
+    for (const path of ["README.md", "skills/heytraders/SKILL.md"]) {
+      const guidance = read(path);
+      expect(guidance).toContain("HEYTRADERS_BRIDGE_UPGRADE_REQUIRED");
+      expect(guidance).toMatch(/reload the existing HeyTraders tab/i);
+    }
   });
 
   it("separates Agent research navigation from operator-facing backtest sharing", () => {

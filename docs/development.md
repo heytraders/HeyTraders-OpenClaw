@@ -22,7 +22,7 @@ docker compose --profile dev run --rm plugin-dev run verify
 docker compose --profile dev run --rm plugin-dev pack --silent
 docker compose up -d openclaw-gateway
 docker compose run --rm openclaw-cli plugins install \
-  npm-pack:/workspace/HeyTraders-OpenClaw/heytraders-openclaw-plugin-0.1.4.tgz \
+  npm-pack:/workspace/HeyTraders-OpenClaw/heytraders-openclaw-plugin-0.1.5.tgz \
   --force --accept-capabilities
 ```
 

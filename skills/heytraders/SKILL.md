@@ -13,7 +13,7 @@ Use this skill only with the `heytraders_cli` tool supplied by the HeyTraders Op
 This skill is bundled with `@heytraders/openclaw-plugin`. Installing the standalone ClawHub skill does not install the browser transport. If `heytraders_cli` is unavailable, ask the operator to install and enable the plugin and allow its optional tool:
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.4
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.5
 openclaw plugins enable heytraders
 ```
 
@@ -83,4 +83,5 @@ The adapter binds one work tab at its configured HeyTraders origin in the manage
 - A human session or change from the bound Agent account is an error, not permission to overwrite that session.
 - If a dispatched command's outcome is unconfirmed, stop and have the operator inspect the action before restarting the adapter. Never replay the action or restart merely to bypass this guard.
 - If automatic authentication fails, preserve the structured Agent-auth error. Do not redirect to human login or fall back to an API-key/Link Agent flow.
+- If `HEYTRADERS_BRIDGE_UPGRADE_REQUIRED` is returned, the bound tab can still have the previous application's JavaScript after a Frontend deploy. Ask the operator to reload the existing HeyTraders tab and recheck read-only `status`; do not open another account's tab, reinstall the plugin to bypass the mismatch, or invoke a fallback transport.
 - If the live page does not expose the required versioned bridge capability, report the transport error rather than guessing a legacy path.

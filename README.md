@@ -13,7 +13,7 @@ The plugin includes the `heytraders_cli` tool and its usage skill. You do not ne
 ## Install in an existing OpenClaw environment
 
 ```bash
-openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.4
+openclaw plugins install clawhub:@heytraders/openclaw-plugin@0.1.5
 openclaw plugins enable heytraders
 ```
 
@@ -85,6 +85,7 @@ HeyTraders does not create or manage the Agent's exchange wallet. Never place AP
 
 - **Tool unavailable:** confirm that the plugin is enabled, `heytraders_cli` is allowed by your tool policy, and OpenClaw has reloaded the configuration.
 - **Browser unavailable:** start the managed browser profile configured for this plugin.
+- **`HEYTRADERS_BRIDGE_UPGRADE_REQUIRED`:** reload the existing HeyTraders tab to load the newly deployed application, then run read-only `status` again. Keep the same intended tab and account; do not open a second tab or bypass the plugin transport.
 - **Multiple HeyTraders tabs:** identify the intended Agent tab and resolve the ambiguity before continuing. Do not switch into a person's account session.
 - **Login error:** follow the returned Agent-authentication error. Do not copy browser cookies or substitute a person's Google login.
 - **Unconfirmed action:** inspect the application's actual state before retrying. Do not replay a potentially completed order or other state-changing action.
