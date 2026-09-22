@@ -218,7 +218,7 @@ class FakeWebSocket implements WebSocketLike {
       expect(request.params?.returnByValue).toBe(true);
       expect(typeof request.params?.expression).toBe("string");
       const members = this.options.bridgeMembers ?? ["request", "agentAuth"];
-      const bridge: Record<string, unknown> = { version: this.options.bridgeVersion ?? 6 };
+      const bridge: Record<string, unknown> = { version: this.options.bridgeVersion ?? 7 };
       for (const member of members) {
         bridge[member] = (input: unknown): unknown => {
           this.invocationInput.push(input);
@@ -370,7 +370,7 @@ function workTabHarness(initialUrl = "https://hey-traders.com/agent") {
             return { ok: true, data: { userId: state.userId, agentId: state.agentId, created: false } };
           }
           state.commands.push({ targetId: tab.targetId, url: tab.url, input });
-          if (input.command === "nav") {
+          if (input.command === "navigation nav") {
             if (state.rejectNavigation) return { ok: false, error: "navigation-runtime-not-ready" };
             tab.url = new URL(String((input.args as Record<string, unknown>).target), tab.url).href;
             const { pathname, search, hash } = new URL(tab.url);
@@ -396,7 +396,7 @@ function workTabHarness(initialUrl = "https://hey-traders.com/agent") {
 describe("Agent work-tab lifecycle", () => {
   it("keeps the same work tab after navigation and ignores unrelated bootstrap tabs", async () => {
     const h = workTabHarness();
-    await h.call({ command: "nav", args: { target: "/dashboard/settings/exchanges" } });
+    await h.call({ command: "navigation nav", args: { target: "/dashboard/settings/exchanges" } });
     h.state.tabs.push({ ...canonicalTab, targetId: "UNRELATED", url: "https://hey-traders.com/agent",
       wsUrl: "ws://127.0.0.1:18800/devtools/page/UNRELATED" });
     await h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } });
@@ -407,7 +407,7 @@ describe("Agent work-tab lifecycle", () => {
 
   it("resumes an existing authenticated dashboard without opening /agent", async () => {
     const h = workTabHarness("https://hey-traders.com/dashboard/settings/exchanges");
-    await h.call({ command: "status" });
+    await h.call({ command: "system status" });
     expect(h.state.createdTabs).toBe(0);
     expect(h.state.commands[0].targetId).toBe("TARGET-1");
   });
@@ -416,7 +416,7 @@ describe("Agent work-tab lifecycle", () => {
     const h = workTabHarness();
     h.state.tabs = [];
     await Promise.all([
-      h.call({ command: "nav", args: { target: "/dashboard/settings/exchanges" } }),
+      h.call({ command: "navigation nav", args: { target: "/dashboard/settings/exchanges" } }),
       h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }),
     ]);
     expect(h.state.createdTabs).toBe(1);
@@ -426,23 +426,23 @@ describe("Agent work-tab lifecycle", () => {
   it("rejects ambiguity before adopting a work tab", async () => {
     const h = workTabHarness();
     h.state.tabs.push({ ...canonicalTab, targetId: "OTHER" });
-    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "AMBIGUOUS_HEYTRADERS_TAB" });
+    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "AMBIGUOUS_HEYTRADERS_TAB" });
     expect(h.options.createWebSocket).not.toHaveBeenCalled();
   });
 
   it("fails closed if its bound tab leaves the allowed origin", async () => {
     const h = workTabHarness();
-    await h.call({ command: "status" });
+    await h.call({ command: "system status" });
     h.state.tabs[0].url = "https://example.com/";
-    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "HEYTRADERS_ORIGIN_CHANGED" });
+    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "HEYTRADERS_ORIGIN_CHANGED" });
     expect(h.state.createdTabs).toBe(0);
   });
 
   it("replaces a closed tab only when no other eligible tab is open", async () => {
     const h = workTabHarness();
-    await h.call({ command: "status" });
+    await h.call({ command: "system status" });
     h.state.tabs = [];
-    await h.call({ command: "status" });
+    await h.call({ command: "system status" });
     expect(h.state.createdTabs).toBe(1);
     expect(h.state.commands.at(-1)?.targetId).toBe("NEW-1");
   });
@@ -453,20 +453,20 @@ describe("Agent work-tab lifecycle", () => {
     h.state.authenticated = false;
     await h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } });
     expect(h.state.createdTabs).toBe(0);
-    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["nav", "nav", "exchange connect"]);
+    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["navigation nav", "navigation nav", "exchange connect"]);
     expect(h.state.commands.at(-1)).toMatchObject({ targetId: "TARGET-1", url: workUrl });
   });
 
   it("does not replace a human session with an Agent session", async () => {
     const h = workTabHarness();
     h.state.humanSession = true;
-    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CONFLICT" });
+    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CONFLICT" });
     expect(h.state.commands).toEqual([]);
   });
 
   it("rejects an account switch in the bound browser session", async () => {
     const h = workTabHarness();
-    await h.call({ command: "status" });
+    await h.call({ command: "system status" });
     h.state.agentId = "a1391cdf-8a74-4f9b-8eea-1b59baf23e6a";
     await expect(h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }))
       .rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CHANGED" });
@@ -485,10 +485,10 @@ describe("Agent work-tab lifecycle", () => {
     const h = workTabHarness();
     const controller = new AbortController();
     controller.abort();
-    await expect(h.call({ command: "status" }, controller.signal))
+    await expect(h.call({ command: "system status" }, controller.signal))
       .rejects.toMatchObject({ code: "PAGE_BRIDGE_ABORTED" });
     expect(h.options.fetch).not.toHaveBeenCalled();
-    await h.call({ command: "status" });
+    await h.call({ command: "system status" });
     expect(h.state.commands).toHaveLength(1);
   });
 
@@ -496,7 +496,7 @@ describe("Agent work-tab lifecycle", () => {
     const h = workTabHarness();
     h.state.deferNextCommand = true;
     const controller = new AbortController();
-    const first = h.call({ command: "nav", args: { target: "/dashboard/settings/exchanges" } }, controller.signal);
+    const first = h.call({ command: "navigation nav", args: { target: "/dashboard/settings/exchanges" } }, controller.signal);
     await vi.waitFor(() => expect(h.state.deferred).toHaveLength(1));
     const canceled = expect(first).rejects.toMatchObject({ code: "PAGE_BRIDGE_ABORTED" });
     controller.abort();
@@ -504,7 +504,7 @@ describe("Agent work-tab lifecycle", () => {
     const second = h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } });
     await new Promise((resolve) => setImmediate(resolve));
     expect(h.state.authChecks).toBe(1);
-    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["nav"]);
+    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["navigation nav"]);
     h.state.deferred.shift()?.();
     await second;
     expect(h.state.commands.at(-1)?.url).toBe("https://hey-traders.com/dashboard/settings/exchanges");
@@ -513,8 +513,8 @@ describe("Agent work-tab lifecycle", () => {
   it("blocks later dispatch when a dispatched command times out without a terminal result", async () => {
     const h = workTabHarness();
     h.state.deferNextCommand = true;
-    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "PAGE_BRIDGE_OUTCOME_UNKNOWN" });
-    await expect(h.call({ command: "status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_OUTCOME_UNCONFIRMED" });
+    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "PAGE_BRIDGE_OUTCOME_UNKNOWN" });
+    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_OUTCOME_UNCONFIRMED" });
     expect(h.state.authChecks).toBe(1);
   });
 
@@ -524,7 +524,7 @@ describe("Agent work-tab lifecycle", () => {
     h.state.rejectNavigation = true;
     await expect(h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }))
       .rejects.toMatchObject({ code: "AGENT_AUTH_NAVIGATION_FAILED" });
-    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["nav"]);
+    expect(h.state.commands.map((entry) => entry.input.command)).toEqual(["navigation nav"]);
     expect(h.state.authenticated).toBe(false);
   });
 });

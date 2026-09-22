@@ -87,7 +87,7 @@ class DirectBridgeSocket implements WebSocketLike {
 
     expect(request.params?.awaitPromise).toBe(true);
     expect(request.params?.returnByValue).toBe(true);
-    const bridge: Record<string, unknown> = { version: this.options.bridgeVersion ?? 6 };
+    const bridge: Record<string, unknown> = { version: this.options.bridgeVersion ?? 7 };
     for (const member of this.options.bridgeMembers ?? ["request", "agentAuth"]) {
       bridge[member] = (input: unknown): unknown => {
         this.invocations.push({ input, member });
@@ -170,7 +170,7 @@ function invoke(
     targetId: TARGET_ID,
     expectedOrigin: ORIGIN,
     member: "request",
-    input: { command: "help", args: {} },
+    input: { command: "system help", args: {} },
     timeoutMs: 1_000,
     createWebSocket: () => {
       queueMicrotask(() => socket.open());
@@ -183,7 +183,7 @@ function invoke(
 describe("direct HeyTraders page bridge", () => {
   it("round-trips request input using only Page and Runtime CDP commands", async () => {
     const socket = new DirectBridgeSocket();
-    const input = { command: "help", args: { note: "한글 🌏 '); window.pwned = true; //" } };
+    const input = { command: "system help", args: { note: "한글 🌏 '); window.pwned = true; //" } };
 
     await expect(invoke(socket, { input })).resolves.toEqual({
       ok: true,
@@ -231,13 +231,13 @@ describe("direct HeyTraders page bridge", () => {
     const socket = new DirectBridgeSocket({ bridgeInstallDelayMs: 10 });
     await expect(invoke(socket)).resolves.toMatchObject({ ok: true });
     expect(socket.invocations).toEqual([{
-      input: { command: "help", args: {} },
+      input: { command: "system help", args: {} },
       member: "request",
     }]);
   });
 
-  it("rejects bridge version 5 before calling a page member", async () => {
-    const socket = new DirectBridgeSocket({ bridgeVersion: 5 });
+  it("rejects the unprefixed-command bridge before calling a page member", async () => {
+    const socket = new DirectBridgeSocket({ bridgeVersion: 6 });
     await expect(invoke(socket)).rejects.toMatchObject({
       code: "HEYTRADERS_BRIDGE_UPGRADE_REQUIRED",
       retryable: false,

@@ -5,7 +5,7 @@ import { normalizeHeyTradersRequest, type HeyTradersRequest } from "./request-co
 
 export const DEFAULT_HEYTRADERS_ORIGIN = "https://hey-traders.com";
 const AGENT_BOOTSTRAP_PATH = "/agent";
-const MINIMUM_PAGE_BRIDGE_VERSION = 6;
+const MINIMUM_PAGE_BRIDGE_VERSION = 7;
 const PAGE_BRIDGE_PROTOCOL = "heytraders-page-bridge-v1";
 const MAX_CDP_MESSAGE_BYTES = 8 * 1024 * 1024;
 const PAGE_ENABLE_REQUEST_ID = 1;
@@ -971,7 +971,7 @@ export async function executeHeyTradersCommand(
       const destination = new URL(target, expectedOrigin);
       assertExpectedMainFrameOrigin(destination.href, expectedOrigin);
       const result = await invoke("request", {
-        command: "nav",
+        command: "navigation nav",
         args: { target: `${destination.pathname}${destination.search}${destination.hash}`, replace: true },
       });
       if (!isRecord(result) || result.ok !== true || !isRecord(result.data)

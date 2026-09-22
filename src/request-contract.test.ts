@@ -23,7 +23,7 @@ describe("normalizeHeyTradersRequest", () => {
   );
 
   it.each([null, [], "not-an-object", 1])("rejects non-object args: %j", (args) => {
-    expect(() => normalizeHeyTradersRequest({ command: "help", args })).toThrow(RequestContractError);
+    expect(() => normalizeHeyTradersRequest({ command: "system help", args })).toThrow(RequestContractError);
   });
 
   it.each([
@@ -63,7 +63,7 @@ describe("normalizeHeyTradersRequest", () => {
     JSON.parse('{"__proto__":{"polluted":true}}') as unknown,
     { nested: JSON.parse('{"constructor":{"prototype":{"polluted":true}}}') as unknown },
   ])("rejects prototype-polluting keys", (args) => {
-    expect(() => normalizeHeyTradersRequest({ command: "help", args })).toThrow(
+    expect(() => normalizeHeyTradersRequest({ command: "system help", args })).toThrow(
       /unsafe object key/i,
     );
   });

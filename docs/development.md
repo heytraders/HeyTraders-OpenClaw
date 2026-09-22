@@ -42,7 +42,7 @@ OpenClaw Agent
       -> resolve the existing managed browser profile
       -> reuse the bound work tab
       -> verify its Agent session; visit /agent only when signing is necessary
-      -> invoke only facade-v6 request/agentAuth through fixed CDP evaluation
+      -> invoke only facade-v7 request/agentAuth through fixed CDP evaluation
 ```
 
 The first invocation adopts one unambiguous HeyTraders tab or opens `/agent` if none exists. Subsequent calls retain the same target across registered routes. After Gateway restart, multiple eligible tabs are ambiguous until the operator chooses the intended work tab.

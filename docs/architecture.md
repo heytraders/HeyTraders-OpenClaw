@@ -13,7 +13,7 @@ This repository is a thin OpenClaw adapter for the live HeyTraders browser comma
 - Resolves only a local OpenClaw-managed browser profile.
 - Pins the configured HeyTraders origin and work-tab target ID, independent of its current route.
 - Establishes the Agent-owned HeyTraders browser session.
-- Uses the managed tab's loopback CDP endpoint to call only facade-v6
+- Uses the managed tab's loopback CDP endpoint to call only facade-v7
   `window.__bridge.request` and `window.__bridge.agentAuth` through a bundled,
   constant `Runtime.evaluate` program.
 - Forwards every normalized command unchanged to `window.__bridge.request`;
@@ -64,7 +64,7 @@ This design neither scans an Agent's machine for wallets nor dictates how extern
 - One model-facing tool, one generic page command member, and one fixed private
   Agent-auth member.
 - Exact-origin and exact-top-frame binding.
-- Facade version 6 or newer and a closed `request | agentAuth` member allowlist.
+- Facade version 7 or newer and a closed `request | agentAuth` member allowlist.
 - No cookies, browser storage, login tokens, wallet keys, API credentials, or signatures in model-visible requests/results.
 - No model-controlled/arbitrary page expression, direct HeyTraders HTTP API,
   shell fallback, dynamic member selection, or undocumented bridge access.

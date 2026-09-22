@@ -21,11 +21,11 @@ The operator must add `heytraders_cli` to their existing tool allowance and have
 
 ## Operating loop
 
-1. Use `status` when browser readiness is uncertain. The plugin reuses its HeyTraders work tab and Agent session. It opens `/agent` only when no app tab exists and visits that route for signing only when a session must be established.
+1. Use `system status` when browser readiness is uncertain. The plugin reuses its HeyTraders work tab and Agent session. It opens `/agent` only when no app tab exists and visits that route for signing only when a session must be established.
 2. Discover only what the current request needs:
-   - `help` lists current domains.
-   - `help <domain>` lists that domain's current commands.
-   - `describe <command>` returns the current argument and execution contract.
+   - `system help` lists current domains.
+   - `system help <domain>` lists that domain's current commands.
+   - `system describe <command>` returns the current argument and execution contract.
 3. Invoke one structured envelope and never repeat an argument inside the selector:
 
    ```json
@@ -39,9 +39,9 @@ The operator must add `heytraders_cli` to their existing tool allowance and have
 
 After a completed backtest, treat `navigation.result.href` and `dashboardUrl` as the Agent account's authenticated workspace locations. Use them to open the result, inspect its simulated executions, continue research, and refine the strategy inside the Agent's own HeyTraders session. They are not operator-facing share links.
 
-Whenever you report a completed strategy's backtest performance to the OpenClaw operator, first discover `help execution` and `describe share-backtest-result`, then call `share-backtest-result` with the exact completed `resultId` returned by the live result command. Do this even when the operator asked to run or evaluate the strategy without separately saying "share"; the operator cannot use the Agent account's authenticated workspace URL. The share command creates an unlisted, read-only snapshot of saved conditions, metrics, equity and simulated executions; it does not expose strategy source, account access, rerun rights or trading permissions.
+Whenever you report a completed strategy's backtest performance to the OpenClaw operator, first discover `system help execution` and `system describe execution share-backtest-result`, then call `execution share-backtest-result` with the exact completed `resultId` returned by the live result command. Do this even when the operator asked to run or evaluate the strategy without separately saying "share"; the operator cannot use the Agent account's authenticated workspace URL. The share command creates an unlisted, read-only snapshot of saved conditions, metrics, equity and simulated executions; it does not expose strategy source, account access, rerun rights or trading permissions.
 
-Include the returned `url` intact, including its `#` fragment, with the performance summary. Do not send `navigation.result.href` or `dashboardUrl` as the operator's result link. Anyone holding the share URL can read the report without signing into the Agent account, so do not publish it elsewhere unless asked. This intentional report link is not a login/session credential. If the Agent is only researching privately and is not yet reporting completed performance, keep using the authenticated workspace URL and do not create a share merely for its own navigation. Discover `list-backtest-shares` to verify creation and `revoke-backtest-share` when asked to stop future access. Revocation cannot recall copies a recipient already saved.
+Include the returned `url` intact, including its `#` fragment, with the performance summary. Do not send `navigation.result.href` or `dashboardUrl` as the operator's result link. Anyone holding the share URL can read the report without signing into the Agent account, so do not publish it elsewhere unless asked. This intentional report link is not a login/session credential. If the Agent is only researching privately and is not yet reporting completed performance, keep using the authenticated workspace URL and do not create a share merely for its own navigation. Discover `execution list-backtest-shares` to verify creation and `execution revoke-backtest-share` when asked to stop future access. Revocation cannot recall copies a recipient already saved.
 
 ## Exchange onboarding
 
@@ -49,7 +49,7 @@ HeyTraders and this plugin do not create wallets, venue accounts, API keys, or s
 
 For every exchange connection:
 
-1. Run `help exchange` when the exchange commands are not already fresh in the current run.
+1. Run `system help exchange` when the exchange commands are not already fresh in the current run.
 2. Run `exchange list` and select only an exchange identifier returned by that live result.
 3. Run `exchange guide` for that exact identifier before attempting connection. Treat its document revision, requirements, permission limits, current Trusted IP metadata, setup steps, and official references as authoritative.
 4. If the Agent does not yet have the required venue account, wallet, or credential, follow the venue-owned preparation described by that guide outside HeyTraders. Use only wallet, browser, or venue tooling already available in the Agent's environment. Do not install software, generate a wallet through HeyTraders, invent a wallet format, or substitute a generic wallet procedure.
@@ -83,5 +83,5 @@ The adapter binds one work tab at its configured HeyTraders origin in the manage
 - A human session or change from the bound Agent account is an error, not permission to overwrite that session.
 - If a dispatched command's outcome is unconfirmed, stop and have the operator inspect the action before restarting the adapter. Never replay the action or restart merely to bypass this guard.
 - If automatic authentication fails, preserve the structured Agent-auth error. Do not redirect to human login or fall back to an API-key/Link Agent flow.
-- If `HEYTRADERS_BRIDGE_UPGRADE_REQUIRED` is returned, the bound tab can still have the previous application's JavaScript after a Frontend deploy. Ask the operator to reload the existing HeyTraders tab and recheck read-only `status`; do not open another account's tab, reinstall the plugin to bypass the mismatch, or invoke a fallback transport.
+- If `HEYTRADERS_BRIDGE_UPGRADE_REQUIRED` is returned, the bound tab can still have the previous application's JavaScript after a Frontend deploy. Ask the operator to reload the existing HeyTraders tab and recheck read-only `system status`; do not open another account's tab, reinstall the plugin to bypass the mismatch, or invoke a fallback transport.
 - If the live page does not expose the required versioned bridge capability, report the transport error rather than guessing a legacy path.
