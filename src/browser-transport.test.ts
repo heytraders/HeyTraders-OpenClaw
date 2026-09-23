@@ -407,7 +407,7 @@ describe("Agent work-tab lifecycle", () => {
 
   it("resumes an existing authenticated dashboard without opening /agent", async () => {
     const h = workTabHarness("https://hey-traders.com/dashboard/settings/exchanges");
-    await h.call({ command: "system status" });
+    await h.call({ command: "help list" });
     expect(h.state.createdTabs).toBe(0);
     expect(h.state.commands[0].targetId).toBe("TARGET-1");
   });
@@ -426,23 +426,23 @@ describe("Agent work-tab lifecycle", () => {
   it("rejects ambiguity before adopting a work tab", async () => {
     const h = workTabHarness();
     h.state.tabs.push({ ...canonicalTab, targetId: "OTHER" });
-    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "AMBIGUOUS_HEYTRADERS_TAB" });
+    await expect(h.call({ command: "help list" })).rejects.toMatchObject({ code: "AMBIGUOUS_HEYTRADERS_TAB" });
     expect(h.options.createWebSocket).not.toHaveBeenCalled();
   });
 
   it("fails closed if its bound tab leaves the allowed origin", async () => {
     const h = workTabHarness();
-    await h.call({ command: "system status" });
+    await h.call({ command: "help list" });
     h.state.tabs[0].url = "https://example.com/";
-    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "HEYTRADERS_ORIGIN_CHANGED" });
+    await expect(h.call({ command: "help list" })).rejects.toMatchObject({ code: "HEYTRADERS_ORIGIN_CHANGED" });
     expect(h.state.createdTabs).toBe(0);
   });
 
   it("replaces a closed tab only when no other eligible tab is open", async () => {
     const h = workTabHarness();
-    await h.call({ command: "system status" });
+    await h.call({ command: "help list" });
     h.state.tabs = [];
-    await h.call({ command: "system status" });
+    await h.call({ command: "help list" });
     expect(h.state.createdTabs).toBe(1);
     expect(h.state.commands.at(-1)?.targetId).toBe("NEW-1");
   });
@@ -460,13 +460,13 @@ describe("Agent work-tab lifecycle", () => {
   it("does not replace a human session with an Agent session", async () => {
     const h = workTabHarness();
     h.state.humanSession = true;
-    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CONFLICT" });
+    await expect(h.call({ command: "help list" })).rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CONFLICT" });
     expect(h.state.commands).toEqual([]);
   });
 
   it("rejects an account switch in the bound browser session", async () => {
     const h = workTabHarness();
-    await h.call({ command: "system status" });
+    await h.call({ command: "help list" });
     h.state.agentId = "a1391cdf-8a74-4f9b-8eea-1b59baf23e6a";
     await expect(h.call({ command: "exchange connect", args: { exchange: "hyperliquid" } }))
       .rejects.toMatchObject({ code: "AGENT_BROWSER_SESSION_CHANGED" });
@@ -485,10 +485,10 @@ describe("Agent work-tab lifecycle", () => {
     const h = workTabHarness();
     const controller = new AbortController();
     controller.abort();
-    await expect(h.call({ command: "system status" }, controller.signal))
+    await expect(h.call({ command: "help list" }, controller.signal))
       .rejects.toMatchObject({ code: "PAGE_BRIDGE_ABORTED" });
     expect(h.options.fetch).not.toHaveBeenCalled();
-    await h.call({ command: "system status" });
+    await h.call({ command: "help list" });
     expect(h.state.commands).toHaveLength(1);
   });
 
@@ -513,8 +513,8 @@ describe("Agent work-tab lifecycle", () => {
   it("blocks later dispatch when a dispatched command times out without a terminal result", async () => {
     const h = workTabHarness();
     h.state.deferNextCommand = true;
-    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "PAGE_BRIDGE_OUTCOME_UNKNOWN" });
-    await expect(h.call({ command: "system status" })).rejects.toMatchObject({ code: "AGENT_BROWSER_OUTCOME_UNCONFIRMED" });
+    await expect(h.call({ command: "help list" })).rejects.toMatchObject({ code: "PAGE_BRIDGE_OUTCOME_UNKNOWN" });
+    await expect(h.call({ command: "help list" })).rejects.toMatchObject({ code: "AGENT_BROWSER_OUTCOME_UNCONFIRMED" });
     expect(h.state.authChecks).toBe(1);
   });
 

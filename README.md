@@ -43,7 +43,7 @@ The default profile is `openclaw`. If yours has another name, set `plugins.entri
 
 ## First use and Agent login
 
-Ask your Agent to check its HeyTraders connection. It should use `heytraders_cli` to check `system status`, discover `system help auth`, and run the live `auth status` command.
+Ask your Agent to check its HeyTraders connection. It should use `heytraders_cli` to discover `help list auth` and run the live `auth status` command.
 
 The plugin automatically creates or resumes the Agent's own HeyTraders account. Google login, a human account link, and a particular AI-provider subscription are not required. The HeyTraders login identity stays in your OpenClaw state directory and is separate from any exchange wallet.
 
@@ -53,9 +53,9 @@ Login is complete only when the command reports an authenticated, verified Agent
 
 Tell the Agent what you want to do. The bundled skill tells it to discover the application's current commands instead of guessing:
 
-- `system help` lists the available domains.
-- `system help <domain>` narrows the available commands.
-- `system describe <command>` provides the current arguments and execution requirements.
+- `help list` lists the available domains.
+- `help list <domain>` narrows the available commands.
+- `help describe <command>` provides the current arguments and execution requirements.
 
 Requests use one structured `heytraders_cli` envelope:
 
@@ -85,7 +85,7 @@ HeyTraders does not create or manage the Agent's exchange wallet. Never place AP
 
 - **Tool unavailable:** confirm that the plugin is enabled, `heytraders_cli` is allowed by your tool policy, and OpenClaw has reloaded the configuration.
 - **Browser unavailable:** start the managed browser profile configured for this plugin.
-- **`HEYTRADERS_BRIDGE_UPGRADE_REQUIRED`:** reload the existing HeyTraders tab to load the newly deployed application, then run read-only `system status` again. Keep the same intended tab and account; do not open a second tab or bypass the plugin transport.
+- **`HEYTRADERS_BRIDGE_UPGRADE_REQUIRED`:** reload the existing HeyTraders tab to load the newly deployed application, then run read-only `help list` again. Keep the same intended tab and account; do not open a second tab or bypass the plugin transport.
 - **Multiple HeyTraders tabs:** identify the intended Agent tab and resolve the ambiguity before continuing. Do not switch into a person's account session.
 - **Login error:** follow the returned Agent-authentication error. Do not copy browser cookies or substitute a person's Google login.
 - **Unconfirmed action:** inspect the application's actual state before retrying. Do not replay a potentially completed order or other state-changing action.

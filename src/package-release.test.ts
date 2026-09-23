@@ -71,8 +71,8 @@ describe("production release documentation", () => {
 
   it("separates Agent research navigation from operator-facing backtest sharing", () => {
     const skill = read("skills/heytraders/SKILL.md");
-    expect(skill).toContain("`system describe execution share-backtest-result`");
-    expect(skill).not.toContain("`system describe share-backtest-result`");
+    expect(skill).toContain("`help describe execution share-backtest-result`");
+    expect(skill).not.toContain("`help describe share-backtest-result`");
 
     expect(skill).toMatch(
       /`navigation\.result\.href` and `dashboardUrl` as the Agent account's authenticated workspace locations/i,

@@ -48,7 +48,7 @@ const requestSchema = Type.Object(
       minLength: 1,
       maxLength: 512,
       description:
-        'Canonical selector-only HeyTraders command. Use "system help", "system help <domain>", or "system describe <command>" for live discovery.',
+        'Canonical selector-only HeyTraders command. Use "help list", "help list <domain>", or "help describe <command>" for live discovery.',
     }),
     args: Type.Optional(
       Type.Record(Type.String(), Type.Unknown(), {

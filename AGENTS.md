@@ -7,7 +7,7 @@ This repository owns the OpenClaw-specific browser adapter, plugin packaging, Ag
 ## Architectural rules
 
 - Treat the live HeyTraders Frontend catalogs, Docs registry, and domain gateways as authoritative.
-- Keep `system help`, `system help <domain>`, and `system describe <command>` as discovery primitives; do not copy the live catalog into plugin code.
+- Keep `help list`, `help list <domain>`, and `help describe <command>` as discovery primitives; do not copy the live catalog into plugin code.
 - Register one structured `heytraders_cli` tool. Do not create one OpenClaw tool per command or an exchange-specific hidden tool.
 - Keep the adapter restricted to the exact production origin `https://hey-traders.com` by default.
 - Use only the versioned page bridge's generic `request` member and its fixed private `agentAuth` member. OpenClaw may invoke those two members through the bundled constant CDP evaluation program; never accept model-authored JavaScript or model-selected members, and do not add any other bridge member, direct HTTP API, shell CLI, or legacy fallback.

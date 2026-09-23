@@ -170,7 +170,7 @@ function invoke(
     targetId: TARGET_ID,
     expectedOrigin: ORIGIN,
     member: "request",
-    input: { command: "system help", args: {} },
+    input: { command: "help list", args: {} },
     timeoutMs: 1_000,
     createWebSocket: () => {
       queueMicrotask(() => socket.open());
@@ -183,7 +183,7 @@ function invoke(
 describe("direct HeyTraders page bridge", () => {
   it("round-trips request input using only Page and Runtime CDP commands", async () => {
     const socket = new DirectBridgeSocket();
-    const input = { command: "system help", args: { note: "한글 🌏 '); window.pwned = true; //" } };
+    const input = { command: "help list", args: { note: "한글 🌏 '); window.pwned = true; //" } };
 
     await expect(invoke(socket, { input })).resolves.toEqual({
       ok: true,
@@ -231,7 +231,7 @@ describe("direct HeyTraders page bridge", () => {
     const socket = new DirectBridgeSocket({ bridgeInstallDelayMs: 10 });
     await expect(invoke(socket)).resolves.toMatchObject({ ok: true });
     expect(socket.invocations).toEqual([{
-      input: { command: "system help", args: {} },
+      input: { command: "help list", args: {} },
       member: "request",
     }]);
   });
