@@ -25,14 +25,14 @@ afterEach(() => {
 });
 
 describe("Agent browser authentication", () => {
-  it("signs only the canonical origin-bound challenge and establishes a session", async () => {
+  it.each(["OpenClaw Runtime", "Custom Research Agent"])("signs the origin-bound challenge with a fixed client hint for %s", async (displayName) => {
     let challenge = "";
     let publicKey = "";
     const operations: string[] = [];
 
     const session = await ensureAgentBrowserSession({
       appOrigin: ORIGIN,
-      displayName: "OpenClaw Runtime",
+      displayName,
       stateDir: stateDirectory(),
       invoke: async (input) => {
         operations.push(String(input.operation));
@@ -40,6 +40,10 @@ describe("Agent browser authentication", () => {
           return { ok: true, data: { authenticated: false } };
         }
         if (input.operation === "challenge") {
+          expect(input.entryClient).toBe("openclaw");
+          expect(input.displayName).toBe(displayName);
+          expect(input.clientInstanceId).toMatch(/^[0-9a-f-]{36}$/u);
+          expect(input.entryClient).not.toBe(input.clientInstanceId);
           publicKey = String(input.publicKey);
           const fingerprint = createHash("sha256")
             .update(Buffer.from(publicKey, "base64url"))
@@ -62,6 +66,7 @@ describe("Agent browser authentication", () => {
           };
         }
         if (input.operation === "complete") {
+          expect(Object.keys(input).sort()).toEqual(["challengeId", "operation", "signature"]);
           const key = createPublicKey({
             key: { kty: "OKP", crv: "Ed25519", x: publicKey },
             format: "jwk",
@@ -108,6 +113,27 @@ describe("Agent browser authentication", () => {
     });
 
     expect(session.created).toBe(false);
+  });
+
+  it("preserves an entry-client rejection without retrying registration or dropping the hint", async () => {
+    const operations: string[] = [];
+    await expect(ensureAgentBrowserSession({
+      appOrigin: ORIGIN,
+      displayName: "Custom Research Agent",
+      stateDir: stateDirectory(),
+      invoke: async (input) => {
+        operations.push(String(input.operation));
+        if (input.operation === "status") {
+          return { ok: true, data: { authenticated: false } };
+        }
+        expect(input.operation).toBe("challenge");
+        expect(input.entryClient).toBe("openclaw");
+        return { ok: false, error: { code: "AGENT_AUTH_INVALID_PAYLOAD" } };
+      },
+    })).rejects.toMatchObject<Partial<AgentAuthenticationError>>({
+      code: "AGENT_AUTH_INVALID_PAYLOAD",
+    });
+    expect(operations).toEqual(["status", "challenge"]);
   });
 
   it("refuses to sign a challenge for another origin", async () => {

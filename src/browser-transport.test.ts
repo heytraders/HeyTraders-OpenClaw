@@ -355,6 +355,7 @@ function workTabHarness(initialUrl = "https://hey-traders.com/agent") {
             }
             expect(new URL(tab.url).pathname).toBe("/agent");
             if (input.operation === "challenge") {
+              expect(input.entryClient).toBe("openclaw");
               const fingerprint = createHash("sha256")
                 .update(Buffer.from(String(input.publicKey), "base64url")).digest("base64url");
               return { ok: true, data: {

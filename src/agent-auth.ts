@@ -147,6 +147,7 @@ export async function ensureAgentBrowserSession(params: {
       publicKey: identity.publicKey,
       clientInstanceId: identity.clientInstanceId,
       displayName: params.displayName,
+      entryClient: "openclaw",
     }),
   );
   const { challengeId, challenge } = validateChallenge(

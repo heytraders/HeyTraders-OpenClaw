@@ -23,6 +23,8 @@ This repository is a thin OpenClaw adapter for the live HeyTraders browser comma
 
 The plugin persists a local Ed25519 identity under the OpenClaw state directory. The page returns an origin- and client-bound challenge; the plugin signs it and receives an HttpOnly Agent browser session. This key represents the Agent's HeyTraders login only. It is never an exchange wallet, API key, or trading signer.
 
+The existing challenge request carries the fixed `entryClient: "openclaw"` hint. This client-declared value is independent of the configurable Agent display name and random client-instance UUID; it is not identity or authorization evidence and grants no marketing consent. Frontend maps it to the backend's optional `entry_client` field, which the actual Agent creation branch may record as operational entry metadata. Marketing source remains unknown without consented observations. The signed origin/key/client/nonce challenge and completion payload are unchanged; an authenticated session sends only the normal status check. A page that rejects the hint must be updated to the matching challenge contract; the plugin does not retry without it.
+
 The private `window.__bridge.agentAuth` capability exposes status on all routes;
 challenge and completion remain restricted to `/agent`. The existing page
 WebMCP auth tool reuses the same Frontend function for other consumers, but

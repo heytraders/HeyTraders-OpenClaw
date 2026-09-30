@@ -47,6 +47,8 @@ Ask your Agent to check its HeyTraders connection. It should use `heytraders_cli
 
 The plugin automatically creates or resumes the Agent's own HeyTraders account. Google login, a human account link, and a particular AI-provider subscription are not required. The HeyTraders login identity stays in your OpenClaw state directory and is separate from any exchange wallet.
 
+The login request identifies this plugin as the `openclaw` entry client, independently of the Agent's name. This client-declared hint lets HeyTraders record the operational signup entry; it does not prove identity or grant marketing consent.
+
 Login is complete only when the command reports an authenticated, verified Agent session. The Agent keeps using the same browser tab as it navigates the application; you do not need to keep an Agent login page open separately.
 
 ## Using HeyTraders
